@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import Hls from "hls.js";
 import {
   Play,
   Pause,
@@ -40,6 +41,7 @@ interface VideoPlayerProps {
 export function VideoPlayer({ channel, onPrevious, onNext, onOpenCatchup, onOpenMultiScreen, className }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const hlsRef = useRef<Hls | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isBuffering, setIsBuffering] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
@@ -70,18 +72,86 @@ export function VideoPlayer({ channel, onPrevious, onNext, onOpenCatchup, onOpen
     videoElement: videoRef.current 
   });
 
+  // Cleanup HLS on unmount or channel change
+  const destroyHls = useCallback(() => {
+    if (hlsRef.current) {
+      hlsRef.current.destroy();
+      hlsRef.current = null;
+    }
+  }, []);
+
   useEffect(() => {
-    if (channel && videoRef.current) {
-      setError(null);
-      setIsBuffering(true);
-      // In a real app, we'd use HLS.js here for .m3u8 streams
-      videoRef.current.src = channel.streamUrl;
-      videoRef.current.play().catch(() => {
+    if (!channel || !videoRef.current) return;
+    
+    const video = videoRef.current;
+    const url = channel.streamUrl;
+    
+    setError(null);
+    setIsBuffering(true);
+    destroyHls();
+    
+    // Check if it's an HLS stream
+    const isHls = url.includes('.m3u8') || url.includes('m3u8');
+    
+    if (isHls && Hls.isSupported()) {
+      // Use HLS.js for HLS streams
+      const hls = new Hls({
+        enableWorker: true,
+        lowLatencyMode: true,
+        backBufferLength: 90,
+        maxBufferLength: 30,
+        maxMaxBufferLength: 60,
+      });
+      hlsRef.current = hls;
+      
+      hls.loadSource(url);
+      hls.attachMedia(video);
+      
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        video.play().catch(() => {
+          setError("Failed to start playback");
+          setIsBuffering(false);
+        });
+      });
+      
+      hls.on(Hls.Events.ERROR, (_event, data) => {
+        if (data.fatal) {
+          switch (data.type) {
+            case Hls.ErrorTypes.NETWORK_ERROR:
+              setError("Network error - stream unavailable");
+              hls.startLoad(); // Try to recover
+              break;
+            case Hls.ErrorTypes.MEDIA_ERROR:
+              setError("Media error - trying to recover");
+              hls.recoverMediaError();
+              break;
+            default:
+              setError("Stream unavailable");
+              break;
+          }
+          setIsBuffering(false);
+        }
+      });
+    } else if (isHls && video.canPlayType('application/vnd.apple.mpegurl')) {
+      // Native HLS support (Safari)
+      video.src = url;
+      video.play().catch(() => {
+        setError("Failed to play stream");
+        setIsBuffering(false);
+      });
+    } else {
+      // Direct playback for non-HLS streams
+      video.src = url;
+      video.play().catch(() => {
         setError("Failed to play stream");
         setIsBuffering(false);
       });
     }
-  }, [channel]);
+    
+    return () => {
+      destroyHls();
+    };
+  }, [channel, destroyHls]);
 
   const handleMouseMove = () => {
     setShowControls(true);
