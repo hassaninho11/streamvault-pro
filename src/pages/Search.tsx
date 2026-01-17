@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Search as SearchIcon, Tv, Calendar, X } from "lucide-react";
+import { useState, useMemo } from "react";
+import { Search as SearchIcon, Tv, Calendar, X, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Input } from "@/components/ui/input";
@@ -7,47 +7,40 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { ChannelLogo, EmptyState } from "@/components/ui/custom";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Channel } from "@/types/iptv";
-
-// Demo data
-const allChannels: Channel[] = [
-  { id: "1", providerId: "1", channelId: "ch1", name: "SVT1", group: "Sweden", streamUrl: "", logoUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/6/62/SVT1_logo_2016.svg/512px-SVT1_logo_2016.svg.png", isHD: true },
-  { id: "2", providerId: "1", channelId: "ch2", name: "SVT2", group: "Sweden", streamUrl: "", isHD: true },
-  { id: "3", providerId: "1", channelId: "ch3", name: "TV4", group: "Sweden", streamUrl: "", logoUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/8/85/TV4_logo_2016.svg/512px-TV4_logo_2016.svg.png", isHD: true },
-  { id: "4", providerId: "1", channelId: "ch4", name: "CNN International", group: "News", streamUrl: "", isHD: true },
-  { id: "5", providerId: "1", channelId: "ch5", name: "BBC World News", group: "News", streamUrl: "", isHD: true },
-  { id: "6", providerId: "1", channelId: "ch6", name: "Eurosport 1", group: "Sports", streamUrl: "", isHD: true },
-  { id: "7", providerId: "1", channelId: "ch7", name: "Discovery Channel", group: "Entertainment", streamUrl: "", isHD: true },
-  { id: "8", providerId: "1", channelId: "ch8", name: "HBO", group: "Movies", streamUrl: "", isHD: true },
-];
-
-const demoPrograms = [
-  { id: "p1", title: "Morning News", channel: "SVT1", time: "08:00 - 09:00" },
-  { id: "p2", title: "Sports Tonight", channel: "Eurosport 1", time: "20:00 - 21:00" },
-  { id: "p3", title: "Movie: Inception", channel: "HBO", time: "21:00 - 23:30" },
-  { id: "p4", title: "Nature Documentary", channel: "Discovery", time: "19:00 - 20:00" },
-];
+import { useChannelLoader } from "@/hooks/useChannelLoader";
+import { useChannelStore } from "@/data/stores/channelStore";
+import { searchChannels } from "@/core/indexing/channelIndex";
 
 export default function SearchPage() {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [activeTab, setActiveTab] = useState("channels");
+  const { isLoading, channelCount } = useChannelLoader();
+  const index = useChannelStore((state) => state.index);
 
-  const filteredChannels = query
-    ? allChannels.filter(
-        (ch) =>
-          ch.name.toLowerCase().includes(query.toLowerCase()) ||
-          ch.group.toLowerCase().includes(query.toLowerCase())
-      )
-    : [];
+  // Search channels using indexed search
+  const filteredChannels = useMemo(() => {
+    if (!query || !index) return [];
+    const matchingIds = searchChannels(query, index);
+    return matchingIds
+      .slice(0, 50) // Limit results for performance
+      .map(id => index.byId.get(id))
+      .filter(Boolean);
+  }, [query, index]);
 
-  const filteredPrograms = query
-    ? demoPrograms.filter(
-        (p) =>
-          p.title.toLowerCase().includes(query.toLowerCase()) ||
-          p.channel.toLowerCase().includes(query.toLowerCase())
-      )
-    : [];
+  // TODO: Implement EPG program search when EPG is loaded
+  const filteredPrograms: Array<{ id: string; title: string; channel: string; time: string }> = [];
+
+  if (isLoading && channelCount === 0) {
+    return (
+      <AppLayout>
+        <div className="flex flex-col items-center justify-center min-h-[80vh] px-4">
+          <Loader2 className="w-12 h-12 text-primary animate-spin mb-4" />
+          <p className="text-muted-foreground">Loading channels...</p>
+        </div>
+      </AppLayout>
+    );
+  }
 
   return (
     <AppLayout>
@@ -77,6 +70,11 @@ export default function SearchPage() {
               </Button>
             )}
           </div>
+          {channelCount > 0 && (
+            <p className="text-sm text-muted-foreground mt-2">
+              Search across {channelCount.toLocaleString()} channels
+            </p>
+          )}
         </div>
 
         {/* Results */}
@@ -98,24 +96,24 @@ export default function SearchPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {filteredChannels.map((channel) => (
                     <Card
-                      key={channel.id}
+                      key={channel!.id}
                       variant="interactive"
                       className="p-4 flex items-center gap-4"
-                      onClick={() => navigate(`/live?channel=${channel.id}`)}
+                      onClick={() => navigate(`/live?channel=${channel!.id}`)}
                     >
                       <ChannelLogo
-                        src={channel.logoUrl}
-                        name={channel.name}
+                        src={channel!.logoUrl}
+                        name={channel!.name}
                         size="md"
                       />
-                      <div className="flex-1">
-                        <h3 className="font-medium">{channel.name}</h3>
-                        <p className="text-sm text-muted-foreground">
-                          {channel.group}
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-medium truncate">{channel!.name}</h3>
+                        <p className="text-sm text-muted-foreground truncate">
+                          {channel!.group}
                         </p>
                       </div>
-                      {channel.isHD && (
-                        <span className="px-2 py-0.5 text-xs font-bold bg-primary/20 text-primary rounded">
+                      {channel!.isHD && (
+                        <span className="px-2 py-0.5 text-xs font-bold bg-primary/20 text-primary rounded flex-shrink-0">
                           HD
                         </span>
                       )}
@@ -158,11 +156,22 @@ export default function SearchPage() {
                 <EmptyState
                   icon={Calendar}
                   title="No programs found"
-                  description={`No programs matching "${query}"`}
+                  description={`No programs matching "${query}". EPG data may not be loaded yet.`}
                 />
               )}
             </TabsContent>
           </Tabs>
+        ) : channelCount === 0 ? (
+          <div className="text-center py-12">
+            <Tv className="w-16 h-16 mx-auto mb-4 text-muted-foreground/30" />
+            <h2 className="text-xl font-semibold mb-2">No channels to search</h2>
+            <p className="text-muted-foreground mb-4">
+              Add a provider to start searching channels
+            </p>
+            <Button variant="outline" onClick={() => navigate("/providers")}>
+              Add Provider
+            </Button>
+          </div>
         ) : (
           <div className="text-center py-12">
             <SearchIcon className="w-16 h-16 mx-auto mb-4 text-muted-foreground/30" />

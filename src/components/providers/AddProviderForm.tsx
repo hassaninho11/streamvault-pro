@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
 
 type ProviderType = "m3u-url" | "m3u-file" | "xtream";
 type ConnectionStatus = "idle" | "testing" | "success" | "error";
@@ -67,31 +68,26 @@ export function AddProviderForm({ onSubmit, onCancel }: AddProviderFormProps) {
         return;
       }
 
-      // Actually fetch the playlist to verify it works
-      const response = await fetch(testUrl, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/x-mpegURL, audio/mpegurl, audio/x-mpegurl, */*',
-        },
+      // Use edge function proxy to avoid CORS issues
+      const { data, error } = await supabase.functions.invoke('playlist-proxy', {
+        body: { url: testUrl, type: 'test' }
       });
 
-      if (!response.ok) {
-        throw new Error(`Server returned ${response.status}`);
+      if (error) {
+        throw new Error(error.message || 'Failed to test connection');
       }
 
-      // Check if response looks like M3U content
-      const contentType = response.headers.get('content-type') || '';
-      const text = await response.text();
-      
-      if (text.includes('#EXTM3U') || text.includes('#EXTINF')) {
-        // Count approximate channels
-        const channelMatches = text.match(/#EXTINF/g);
-        const approxChannels = channelMatches?.length || 0;
+      if (!data.success) {
+        throw new Error(data.error || 'Connection failed');
+      }
+
+      if (data.isValidPlaylist) {
         setConnectionStatus("success");
-        setSuccessMessage(approxChannels > 0 ? `Found approximately ${approxChannels} channels` : "Connection successful!");
-      } else if (contentType.includes('mpegurl') || contentType.includes('m3u')) {
-        setConnectionStatus("success");
-        setSuccessMessage("Connection successful!");
+        setSuccessMessage(
+          data.channelCount > 0 
+            ? `Found ${data.channelCount.toLocaleString()} channels` 
+            : "Connection successful!"
+        );
       } else {
         setConnectionStatus("error");
         setErrorMessage("Response doesn't appear to be a valid M3U playlist");
@@ -99,11 +95,7 @@ export function AddProviderForm({ onSubmit, onCancel }: AddProviderFormProps) {
     } catch (error) {
       setConnectionStatus("error");
       if (error instanceof Error) {
-        if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-          setErrorMessage("Could not connect. Check the URL or try again.");
-        } else {
-          setErrorMessage(error.message);
-        }
+        setErrorMessage(error.message);
       } else {
         setErrorMessage("Connection failed");
       }
