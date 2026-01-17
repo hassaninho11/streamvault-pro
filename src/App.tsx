@@ -20,6 +20,7 @@ import Settings from "./pages/Settings";
 import Auth from "./pages/Auth";
 import SyncBackup from "./pages/SyncBackup";
 import ProfileSelect from "./pages/ProfileSelect";
+import Health from "./pages/Health";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -41,6 +42,7 @@ const AppRoutes = () => {
       <Route path="/providers" element={<Providers />} />
       <Route path="/settings" element={<Settings />} />
       <Route path="/sync" element={<SyncBackup />} />
+      <Route path="/health" element={<Health />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   );
