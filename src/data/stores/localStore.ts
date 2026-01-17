@@ -49,6 +49,7 @@ export interface LocalSettings {
     autoplay: boolean;
     defaultQuality: 'auto' | 'high' | 'medium' | 'low';
     bufferSize: number;
+    customProxyUrl?: string; // Custom stream proxy URL
   };
   selectedProfileId?: string;
   updatedAt: number;

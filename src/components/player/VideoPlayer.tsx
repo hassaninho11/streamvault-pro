@@ -28,6 +28,7 @@ import { useCatchup } from "@/services/CatchupService";
 import { usePip } from "@/services/PipService";
 import { useMultiScreen } from "@/contexts/MultiScreenContext";
 import { QualitySelector, QualityLevel } from "./QualitySelector";
+import { localStore } from "@/data/stores/localStore";
 
 interface VideoPlayerProps {
   channel: Channel | null;
@@ -129,12 +130,10 @@ export function VideoPlayer({ channel, onPrevious, onNext, onOpenCatchup, onOpen
     const lowerUrl = originalUrl.toLowerCase();
     
     // For Xtream-style URLs without extension, try adding .m3u8 for HLS
-    // This helps with some providers that support multiple output formats
     const isXtreamStyle = /\/live\/[^/]+\/[^/]+\/\d+$/.test(originalUrl) || 
                           /\/[^/]+\/[^/]+\/\d+$/.test(originalUrl);
     
     if (isXtreamStyle && !lowerUrl.includes('.')) {
-      // Try HLS format by appending .m3u8
       originalUrl = originalUrl + '.m3u8';
       console.log('[VideoPlayer] Converted to HLS format:', originalUrl);
     }
@@ -142,34 +141,6 @@ export function VideoPlayer({ channel, onPrevious, onNext, onOpenCatchup, onOpen
     const isHls = lowerUrl.includes('.m3u8') || 
                   lowerUrl.includes('m3u8') || 
                   isXtreamStyle;
-    
-    // Build all possible URLs to try
-    const urlsToTry: string[] = [];
-    
-    // If HTTP stream on HTTPS page, we can only try proxy
-    // Direct HTTP will be blocked by Mixed Content
-    if (isHttpStream && isSecurePage) {
-      // Try proxy first (only option for Mixed Content)
-      if (supabaseUrl) {
-        urlsToTry.push(`${supabaseUrl}/functions/v1/stream-proxy?url=${encodeURIComponent(originalUrl)}`);
-        
-        // Also try without .m3u8 extension via proxy
-        if (isXtreamStyle && originalUrl.endsWith('.m3u8')) {
-          const withoutExt = originalUrl.replace('.m3u8', '');
-          urlsToTry.push(`${supabaseUrl}/functions/v1/stream-proxy?url=${encodeURIComponent(withoutExt)}`);
-        }
-      }
-    } else {
-      // HTTPS stream or HTTP page - try direct first
-      urlsToTry.push(originalUrl);
-      
-      // Also try without .m3u8 if we added it
-      if (isXtreamStyle && originalUrl.endsWith('.m3u8')) {
-        urlsToTry.push(originalUrl.replace('.m3u8', ''));
-      }
-    }
-    
-    let currentUrlIndex = 0;
     
     const showFinalError = () => {
       if (isHttpStream && isSecurePage) {
@@ -180,27 +151,8 @@ export function VideoPlayer({ channel, onPrevious, onNext, onOpenCatchup, onOpen
       setIsBuffering(false);
     };
     
-    const tryNextUrl = () => {
-      if (currentUrlIndex >= urlsToTry.length) {
-        showFinalError();
-        return;
-      }
-      
-      const url = urlsToTry[currentUrlIndex];
-      currentUrlIndex++;
-      
-      console.log(`[VideoPlayer] Trying URL ${currentUrlIndex}/${urlsToTry.length}:`, url.substring(0, 80) + '...');
-      
-      if (isHls) {
-        tryHlsPlayback(url, tryNextUrl);
-      } else {
-        tryDirectPlayback(url, tryNextUrl);
-      }
-    };
-    
     const tryHlsPlayback = (url: string, onFail: () => void) => {
       if (!Hls.isSupported()) {
-        // Fallback for Safari with native HLS
         if (video.canPlayType('application/vnd.apple.mpegurl')) {
           video.src = url;
           
@@ -246,7 +198,6 @@ export function VideoPlayer({ channel, onPrevious, onNext, onOpenCatchup, onOpen
         manifestLoaded = true;
         console.log('[VideoPlayer] HLS manifest parsed, levels:', data.levels?.length);
         
-        // Build quality levels from HLS levels
         if (data.levels && data.levels.length > 0) {
           const levels: QualityLevel[] = data.levels.map((level: { height: number; width: number; bitrate: number }, index: number) => ({
             index,
@@ -277,11 +228,9 @@ export function VideoPlayer({ channel, onPrevious, onNext, onOpenCatchup, onOpen
         if (data.fatal) {
           destroyHls();
           
-          // If manifest never loaded, try next URL
           if (!manifestLoaded) {
             onFail();
           } else {
-            // Manifest was loaded but playback failed - show error
             setError("Stream playback failed");
             setIsBuffering(false);
           }
@@ -312,12 +261,87 @@ export function VideoPlayer({ channel, onPrevious, onNext, onOpenCatchup, onOpen
       video.load();
     };
     
-    // Start trying URLs
-    if (urlsToTry.length === 0) {
-      showFinalError();
-    } else {
-      tryNextUrl();
-    }
+    // Async function to load settings and start playback
+    const startPlayback = async () => {
+      // Load custom proxy URL from settings
+      let customProxyUrl: string | undefined;
+      try {
+        const settings = await localStore.getSettings();
+        customProxyUrl = settings.playerSettings?.customProxyUrl;
+        if (customProxyUrl) {
+          console.log('[VideoPlayer] Using custom proxy URL:', customProxyUrl);
+        }
+      } catch (e) {
+        console.warn('[VideoPlayer] Could not load settings:', e);
+      }
+      
+      // Helper to build proxy URL
+      const buildProxyUrl = (streamUrl: string): string | null => {
+        if (customProxyUrl) {
+          if (customProxyUrl.includes('?') || customProxyUrl.endsWith('=')) {
+            return `${customProxyUrl}${encodeURIComponent(streamUrl)}`;
+          }
+          return `${customProxyUrl}?url=${encodeURIComponent(streamUrl)}`;
+        }
+        if (supabaseUrl) {
+          return `${supabaseUrl}/functions/v1/stream-proxy?url=${encodeURIComponent(streamUrl)}`;
+        }
+        return null;
+      };
+      
+      // Build all possible URLs to try
+      const urlsToTry: string[] = [];
+      
+      if (isHttpStream && isSecurePage) {
+        const proxyUrl = buildProxyUrl(originalUrl);
+        if (proxyUrl) {
+          urlsToTry.push(proxyUrl);
+          
+          if (isXtreamStyle && originalUrl.endsWith('.m3u8')) {
+            const withoutExt = originalUrl.replace('.m3u8', '');
+            const proxyUrlWithoutExt = buildProxyUrl(withoutExt);
+            if (proxyUrlWithoutExt) {
+              urlsToTry.push(proxyUrlWithoutExt);
+            }
+          }
+        }
+      } else {
+        urlsToTry.push(originalUrl);
+        
+        if (isXtreamStyle && originalUrl.endsWith('.m3u8')) {
+          urlsToTry.push(originalUrl.replace('.m3u8', ''));
+        }
+      }
+      
+      let currentUrlIndex = 0;
+      
+      const tryNextUrl = () => {
+        if (currentUrlIndex >= urlsToTry.length) {
+          showFinalError();
+          return;
+        }
+        
+        const url = urlsToTry[currentUrlIndex];
+        currentUrlIndex++;
+        
+        console.log(`[VideoPlayer] Trying URL ${currentUrlIndex}/${urlsToTry.length}:`, url.substring(0, 80) + '...');
+        
+        if (isHls) {
+          tryHlsPlayback(url, tryNextUrl);
+        } else {
+          tryDirectPlayback(url, tryNextUrl);
+        }
+      };
+      
+      if (urlsToTry.length === 0) {
+        showFinalError();
+      } else {
+        tryNextUrl();
+      }
+    };
+    
+    // Start playback
+    startPlayback();
     
     return () => {
       destroyHls();
