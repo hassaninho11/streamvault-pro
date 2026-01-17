@@ -249,6 +249,100 @@ class CacheManager {
     };
   }
   
+  /**
+   * Get detailed cache statistics including size estimates
+   */
+  async getDetailedStats(): Promise<{
+    channels: { count: number; providers: number; estimatedSize: number };
+    epg: { count: number; days: number; estimatedSize: number };
+    logos: { count: number; estimatedSize: number };
+    total: { estimatedSize: number };
+    lastUpdated: { channels?: number; epg?: number };
+  }> {
+    try {
+      const db = await this.getDB();
+      
+      // Get channels stats
+      const channelEntries = await db.getAll('channels');
+      let channelCount = 0;
+      let latestChannelUpdate = 0;
+      for (const entry of channelEntries) {
+        channelCount += entry.channels.length;
+        if (entry.updatedAt > latestChannelUpdate) {
+          latestChannelUpdate = entry.updatedAt;
+        }
+      }
+      const channelSize = channelCount * 500; // ~500 bytes per channel estimate
+      
+      // Get EPG stats
+      const epgEntries = await db.getAll('epg');
+      let epgProgramCount = 0;
+      let latestEpgUpdate = 0;
+      const uniqueDates = new Set<string>();
+      for (const entry of epgEntries) {
+        epgProgramCount += entry.programs.length;
+        uniqueDates.add(entry.date);
+        if (entry.updatedAt > latestEpgUpdate) {
+          latestEpgUpdate = entry.updatedAt;
+        }
+      }
+      const epgSize = epgProgramCount * 200; // ~200 bytes per program estimate
+      
+      // Get logos stats
+      const logoEntries = await db.getAll('logos');
+      let logoSize = 0;
+      for (const entry of logoEntries) {
+        logoSize += entry.blob.size;
+      }
+      
+      return {
+        channels: {
+          count: channelCount,
+          providers: channelEntries.length,
+          estimatedSize: channelSize,
+        },
+        epg: {
+          count: epgProgramCount,
+          days: uniqueDates.size,
+          estimatedSize: epgSize,
+        },
+        logos: {
+          count: logoEntries.length,
+          estimatedSize: logoSize,
+        },
+        total: {
+          estimatedSize: channelSize + epgSize + logoSize,
+        },
+        lastUpdated: {
+          channels: latestChannelUpdate || undefined,
+          epg: latestEpgUpdate || undefined,
+        },
+      };
+    } catch (error) {
+      console.error('[Cache] Error getting detailed stats:', error);
+      return {
+        channels: { count: 0, providers: 0, estimatedSize: 0 },
+        epg: { count: 0, days: 0, estimatedSize: 0 },
+        logos: { count: 0, estimatedSize: 0 },
+        total: { estimatedSize: 0 },
+        lastUpdated: {},
+      };
+    }
+  }
+  
+  /**
+   * Clear specific cache type
+   */
+  async clearByType(type: 'channels' | 'epg' | 'logos'): Promise<void> {
+    try {
+      const db = await this.getDB();
+      await db.clear(type);
+      console.log(`[Cache] Cleared ${type} cache`);
+    } catch (error) {
+      console.error(`[Cache] Error clearing ${type}:`, error);
+    }
+  }
+  
   async clearAll(): Promise<void> {
     try {
       const db = await this.getDB();

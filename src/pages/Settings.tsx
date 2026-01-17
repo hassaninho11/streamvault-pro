@@ -24,6 +24,7 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { CacheManagement } from "@/components/settings/CacheManagement";
 import { APP_CONFIG } from "@/config/app";
 import { cn } from "@/lib/utils";
 
@@ -368,46 +369,7 @@ export default function SettingsPage() {
 
             {/* Cache Section */}
             {activeSection === "cache" && (
-              <Card variant="glass">
-                <CardHeader>
-                  <CardTitle>Data & Cache</CardTitle>
-                  <CardDescription>Manage stored data</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <Label>EPG Refresh Interval</Label>
-                      <p className="text-sm text-muted-foreground">How often to update program guide</p>
-                    </div>
-                    <Select
-                      value={settings.epgRefresh.toString()}
-                      onValueChange={(v) => updateSetting("epgRefresh", parseInt(v))}
-                    >
-                      <SelectTrigger className="w-32">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="3">3 hours</SelectItem>
-                        <SelectItem value="6">6 hours</SelectItem>
-                        <SelectItem value="12">12 hours</SelectItem>
-                        <SelectItem value="24">24 hours</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <Separator />
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <Label>Cache Size</Label>
-                      <p className="text-sm text-muted-foreground">EPG, logos, and metadata</p>
-                    </div>
-                    <span className="text-sm text-muted-foreground">12.4 MB</span>
-                  </div>
-                  <Button variant="outline" className="gap-2">
-                    <Trash2 className="w-4 h-4" />
-                    Clear Cache
-                  </Button>
-                </CardContent>
-              </Card>
+              <CacheManagement />
             )}
 
             {/* About Section */}
