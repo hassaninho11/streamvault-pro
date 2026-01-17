@@ -261,6 +261,54 @@
   }
 }
 
+/* TV Mode specific styles */
+body.tv-mode {
+  /* Larger base font for 10-foot viewing */
+  font-size: 18px;
+  
+  /* Disable text selection in TV mode */
+  -webkit-user-select: none;
+  user-select: none;
+  
+  /* Hide cursor in TV mode */
+  cursor: none;
+}
+
+body.tv-mode * {
+  /* Ensure consistent focus ring */
+  outline-offset: 4px;
+}
+
+body.tv-mode .tv-focus-ring:focus {
+  outline: none;
+  box-shadow: 0 0 0 4px hsl(var(--primary)), var(--shadow-glow-lg);
+}
+
+/* TV-specific reduced motion for performance */
+body.tv-mode,
+body.tv-mode * {
+  /* Disable heavy animations */
+  animation-duration: 0.1s !important;
+  transition-duration: 0.1s !important;
+}
+
+/* Keep essential animations */
+body.tv-mode .animate-pulse,
+body.tv-mode .live-pulse::before {
+  animation-duration: 1.5s !important;
+}
+
+/* Remove heavy effects in TV mode */
+body.tv-mode .glass-card {
+  backdrop-filter: none;
+  background: hsl(var(--card));
+}
+
+body.tv-mode .glow-hover:hover {
+  box-shadow: none;
+  transform: none;
+}
+
 @layer utilities {
   /* Hide scrollbar but keep functionality */
   .scrollbar-hide {

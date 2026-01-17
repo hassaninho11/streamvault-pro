@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 interface ChannelLogoProps {
   src?: string;
   name: string;
-  size?: "sm" | "md" | "lg";
+  size?: "sm" | "md" | "lg" | "xl";
   className?: string;
 }
 
@@ -12,6 +12,7 @@ const sizeClasses = {
   sm: "w-8 h-8 text-xs",
   md: "w-12 h-12 text-sm",
   lg: "w-16 h-16 text-base",
+  xl: "w-20 h-20 text-lg",
 };
 
 export function ChannelLogo({ src, name, size = "md", className }: ChannelLogoProps) {

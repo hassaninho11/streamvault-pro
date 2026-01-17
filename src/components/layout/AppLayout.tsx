@@ -156,7 +156,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                 size="sm" 
                 variant="ghost" 
                 className="w-full justify-start gap-2 text-muted-foreground hover:text-destructive"
-                onClick={signOut}
+                onClick={() => signOut()}
               >
                 <LogOut className="w-4 h-4" />
                 Sign Out
