@@ -269,9 +269,15 @@ body.tv-mode {
   /* Disable text selection in TV mode */
   -webkit-user-select: none;
   user-select: none;
-  
-  /* Hide cursor in TV mode */
+}
+
+/* Only hide cursor when explicitly set via JS after mouse inactivity */
+body.tv-mode.cursor-hidden {
   cursor: none;
+}
+
+body.tv-mode.cursor-hidden * {
+  cursor: none !important;
 }
 
 body.tv-mode * {

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 
 interface TVModeContextType {
   isTVMode: boolean;
@@ -34,14 +34,9 @@ function detectTVEnvironment(): boolean {
   
   const isTVUserAgent = tvPatterns.some(pattern => ua.includes(pattern));
   
-  // Check for large screen (TV typically 1920x1080+) with low pixel density
-  const isLargeScreen = window.innerWidth >= 1280 && window.innerHeight >= 720;
-  const isLowDensity = window.devicePixelRatio <= 1.5;
-  
-  // Check if no touch support (TVs typically don't have touch)
-  const hasNoTouch = !('ontouchstart' in window) && navigator.maxTouchPoints === 0;
-  
-  return isTVUserAgent || (isLargeScreen && isLowDensity && hasNoTouch);
+  // Only auto-enable TV mode for actual TV user agents, not just large screens
+  // This prevents false positives for desktop users
+  return isTVUserAgent;
 }
 
 export function TVModeProvider({ children }: { children: ReactNode }) {
@@ -55,6 +50,8 @@ export function TVModeProvider({ children }: { children: ReactNode }) {
     return detectTVEnvironment();
   });
 
+  const cursorTimeoutRef = useRef<number | null>(null);
+
   const setTVMode = useCallback((enabled: boolean) => {
     setIsTVMode(enabled);
     localStorage.setItem('streamvault-tv-mode', String(enabled));
@@ -64,12 +61,56 @@ export function TVModeProvider({ children }: { children: ReactNode }) {
       document.body.classList.add('tv-mode');
     } else {
       document.body.classList.remove('tv-mode');
+      document.body.classList.remove('cursor-hidden');
     }
   }, []);
 
   const toggleTVMode = useCallback(() => {
     setTVMode(!isTVMode);
   }, [isTVMode, setTVMode]);
+
+  // Handle cursor visibility in TV mode
+  useEffect(() => {
+    if (!isTVMode) return;
+
+    const showCursor = () => {
+      document.body.classList.remove('cursor-hidden');
+      
+      // Clear existing timeout
+      if (cursorTimeoutRef.current) {
+        window.clearTimeout(cursorTimeoutRef.current);
+      }
+      
+      // Hide cursor after 3 seconds of inactivity
+      cursorTimeoutRef.current = window.setTimeout(() => {
+        if (document.body.classList.contains('tv-mode')) {
+          document.body.classList.add('cursor-hidden');
+        }
+      }, 3000);
+    };
+
+    // Show cursor on mouse movement
+    const handleMouseMove = () => {
+      showCursor();
+    };
+
+    // Show cursor on click
+    const handleClick = () => {
+      showCursor();
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('click', handleClick);
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('click', handleClick);
+      if (cursorTimeoutRef.current) {
+        window.clearTimeout(cursorTimeoutRef.current);
+      }
+      document.body.classList.remove('cursor-hidden');
+    };
+  }, [isTVMode]);
 
   // Apply TV mode class on mount
   useEffect(() => {
@@ -78,6 +119,7 @@ export function TVModeProvider({ children }: { children: ReactNode }) {
     }
     return () => {
       document.body.classList.remove('tv-mode');
+      document.body.classList.remove('cursor-hidden');
     };
   }, [isTVMode]);
 
