@@ -13,20 +13,26 @@ import {
   AlertCircle,
   ChevronUp,
   ChevronDown,
+  Radio,
+  History,
+  Rewind,
+  FastForward,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
 import { Channel } from "@/types/iptv";
+import { useCatchup } from "@/services/CatchupService";
 
 interface VideoPlayerProps {
   channel: Channel | null;
   onPrevious?: () => void;
   onNext?: () => void;
+  onOpenCatchup?: () => void;
   className?: string;
 }
 
-export function VideoPlayer({ channel, onPrevious, onNext, className }: VideoPlayerProps) {
+export function VideoPlayer({ channel, onPrevious, onNext, onOpenCatchup, className }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -37,6 +43,21 @@ export function VideoPlayer({ channel, onPrevious, onNext, className }: VideoPla
   const [showControls, setShowControls] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout>();
+  
+  // Timeshift/Catch-up hook
+  const {
+    timeshiftState,
+    isTimeshifting,
+    behindLiveDisplay,
+    goToLive,
+    seekBack,
+    seekForward,
+    hasCatchup,
+    catchupSource,
+  } = useCatchup({ 
+    channelId: channel?.id || '', 
+    videoElement: videoRef.current 
+  });
 
   useEffect(() => {
     if (channel && videoRef.current) {
@@ -98,6 +119,20 @@ export function VideoPlayer({ channel, onPrevious, onNext, className }: VideoPla
       await document.exitFullscreen();
       setIsFullscreen(false);
     }
+  };
+  
+  // Helper functions for timeshift
+  const formatTime = (timestamp?: number): string => {
+    if (!timestamp) return '--:--';
+    const date = new Date(timestamp);
+    return date.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' });
+  };
+  
+  const calculateBufferProgress = (state: typeof timeshiftState): number => {
+    if (!state) return 100;
+    const range = state.livePosition - state.bufferStart;
+    if (range <= 0) return 100;
+    return ((state.playbackPosition - state.bufferStart) / range) * 100;
   };
 
   if (!channel) {
@@ -234,8 +269,77 @@ export function VideoPlayer({ channel, onPrevious, onNext, className }: VideoPla
         </div>
 
         {/* Bottom Controls */}
-        <div className="absolute bottom-0 left-0 right-0 p-4">
-          <div className="flex items-center gap-4">
+        <div className="absolute bottom-0 left-0 right-0 p-4 space-y-3">
+          {/* Timeshift progress bar */}
+          {catchupSource?.supportsTimeshift && (
+            <div className="flex items-center gap-3">
+              {/* Buffer start time */}
+              <span className="text-xs text-muted-foreground min-w-[45px]">
+                {timeshiftState ? formatTime(timeshiftState.bufferStart) : '--:--'}
+              </span>
+              
+              {/* Progress slider */}
+              <div className="flex-1 relative">
+                <Slider
+                  value={[calculateBufferProgress(timeshiftState)]}
+                  onValueChange={(v) => {
+                    if (videoRef.current && timeshiftState) {
+                      const progress = v[0] / 100;
+                      const bufferDuration = (timeshiftState.livePosition - timeshiftState.bufferStart) / 1000;
+                      videoRef.current.currentTime = progress * bufferDuration;
+                    }
+                  }}
+                  max={100}
+                  step={0.1}
+                  className="w-full"
+                />
+                {/* Live dot indicator */}
+                <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1">
+                  <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                </div>
+              </div>
+              
+              {/* Live / Behind indicator button */}
+              <Button
+                variant={isTimeshifting ? 'outline' : 'default'}
+                size="sm"
+                onClick={goToLive}
+                className={cn(
+                  'min-w-[70px] gap-1 text-xs',
+                  !isTimeshifting && 'bg-red-600 hover:bg-red-700 text-white'
+                )}
+              >
+                <Radio className={cn('w-2.5 h-2.5', !isTimeshifting && 'animate-pulse')} />
+                {behindLiveDisplay}
+              </Button>
+            </div>
+          )}
+          
+          <div className="flex items-center gap-2">
+            {/* Rewind controls (when timeshift available) */}
+            {catchupSource?.supportsTimeshift && (
+              <>
+                <Button
+                  variant="player"
+                  size="icon"
+                  onClick={() => seekBack(30)}
+                  disabled={!timeshiftState?.canSeekBack}
+                  title="Spola tillbaka 30s"
+                >
+                  <Rewind className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant="player"
+                  size="icon"
+                  onClick={() => seekBack(10)}
+                  disabled={!timeshiftState?.canSeekBack}
+                  title="Spola tillbaka 10s"
+                >
+                  <SkipBack className="w-4 h-4" />
+                </Button>
+              </>
+            )}
+            
             {/* Play/Pause */}
             <Button variant="player" size="icon" onClick={togglePlay}>
               {isPlaying ? (
@@ -245,26 +349,54 @@ export function VideoPlayer({ channel, onPrevious, onNext, className }: VideoPla
               )}
             </Button>
 
-            {/* Previous/Next */}
-            <Button
-              variant="player"
-              size="icon"
-              onClick={onPrevious}
-              disabled={!onPrevious}
-            >
-              <SkipBack className="w-5 h-5" />
-            </Button>
-            <Button
-              variant="player"
-              size="icon"
-              onClick={onNext}
-              disabled={!onNext}
-            >
-              <SkipForward className="w-5 h-5" />
-            </Button>
+            {/* Forward controls (when timeshift available) */}
+            {catchupSource?.supportsTimeshift && (
+              <>
+                <Button
+                  variant="player"
+                  size="icon"
+                  onClick={() => seekForward(10)}
+                  disabled={!timeshiftState?.canSeekForward}
+                  title="Spola fram 10s"
+                >
+                  <SkipForward className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant="player"
+                  size="icon"
+                  onClick={() => seekForward(30)}
+                  disabled={!timeshiftState?.canSeekForward}
+                  title="Spola fram 30s"
+                >
+                  <FastForward className="w-4 h-4" />
+                </Button>
+              </>
+            )}
+            
+            {/* Channel navigation (when no timeshift or as secondary) */}
+            {!catchupSource?.supportsTimeshift && (
+              <>
+                <Button
+                  variant="player"
+                  size="icon"
+                  onClick={onPrevious}
+                  disabled={!onPrevious}
+                >
+                  <SkipBack className="w-5 h-5" />
+                </Button>
+                <Button
+                  variant="player"
+                  size="icon"
+                  onClick={onNext}
+                  disabled={!onNext}
+                >
+                  <SkipForward className="w-5 h-5" />
+                </Button>
+              </>
+            )}
 
             {/* Volume */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 ml-2">
               <Button variant="player" size="icon" onClick={toggleMute}>
                 {isMuted || volume === 0 ? (
                   <VolumeX className="w-5 h-5" />
@@ -282,6 +414,18 @@ export function VideoPlayer({ channel, onPrevious, onNext, className }: VideoPla
             </div>
 
             <div className="flex-1" />
+
+            {/* Catch-up browser button */}
+            {hasCatchup && onOpenCatchup && (
+              <Button 
+                variant="player" 
+                size="icon" 
+                onClick={onOpenCatchup}
+                title="Catch-up / Arkiv"
+              >
+                <History className="w-5 h-5" />
+              </Button>
+            )}
 
             {/* Settings */}
             <Button variant="player" size="icon">
