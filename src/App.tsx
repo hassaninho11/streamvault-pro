@@ -7,6 +7,8 @@ import { AuthProvider } from "@/hooks/useAuth";
 import { TVModeProvider } from "@/contexts/TVModeContext";
 import Home from "./pages/Home";
 import LiveTV from "./pages/LiveTV";
+import Movies from "./pages/Movies";
+import Series from "./pages/Series";
 import Epg from "./pages/Epg";
 import Search from "./pages/Search";
 import Favorites from "./pages/Favorites";
@@ -26,6 +28,8 @@ const AppRoutes = () => {
       <Route path="/auth" element={<Auth />} />
       <Route path="/" element={<Home />} />
       <Route path="/live" element={<LiveTV />} />
+      <Route path="/movies" element={<Movies />} />
+      <Route path="/series" element={<Series />} />
       <Route path="/epg" element={<Epg />} />
       <Route path="/search" element={<Search />} />
       <Route path="/favorites" element={<Favorites />} />

@@ -3,6 +3,8 @@ import { NavLink, useLocation } from "react-router-dom";
 import { 
   Home, 
   Tv, 
+  Film,
+  MonitorPlay,
   Calendar, 
   Search, 
   Settings, 
@@ -24,17 +26,19 @@ interface AppLayoutProps {
 }
 
 const navItems = [
-  { to: "/", icon: Home, label: "Home" },
+  { to: "/", icon: Home, label: "Hem" },
   { to: "/live", icon: Tv, label: "Live TV" },
+  { to: "/movies", icon: Film, label: "Filmer" },
+  { to: "/series", icon: MonitorPlay, label: "Serier" },
   { to: "/epg", icon: Calendar, label: "Guide" },
-  { to: "/search", icon: Search, label: "Search" },
-  { to: "/favorites", icon: Star, label: "Favorites" },
-  { to: "/recent", icon: Clock, label: "Recent" },
+  { to: "/search", icon: Search, label: "Sök" },
+  { to: "/favorites", icon: Star, label: "Favoriter" },
+  { to: "/recent", icon: Clock, label: "Senaste" },
 ];
 
 const bottomNavItems = [
-  { to: "/providers", icon: Plus, label: "Providers" },
-  { to: "/settings", icon: Settings, label: "Settings" },
+  { to: "/providers", icon: Plus, label: "Leverantörer" },
+  { to: "/settings", icon: Settings, label: "Inställningar" },
 ];
 
 export function AppLayout({ children }: AppLayoutProps) {
