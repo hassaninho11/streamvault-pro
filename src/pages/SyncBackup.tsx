@@ -2,12 +2,11 @@
  * Sync & Backup Page - Manage data sync and local backup
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { 
   Cloud, 
   CloudOff, 
   Download, 
-  Upload, 
   RefreshCw, 
   CheckCircle2, 
   AlertCircle,
@@ -15,7 +14,11 @@ import {
   Smartphone,
   Loader2,
   FileDown,
-  FileUp
+  FileUp,
+  Lock,
+  Unlock,
+  AlertTriangle,
+  ShieldCheck
 } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
@@ -24,10 +27,26 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "@/components/ui/alert";
 import { useAuth } from "@/hooks/useAuth";
 import { syncEngine, SyncStatus, SyncStrategy } from "@/data/stores/syncEngine";
 import { localStore } from "@/data/stores/localStore";
+import { backupService } from "@/services/BackupService";
 import { useToast } from "@/hooks/use-toast";
+
+type ExportType = 'encrypted' | 'unencrypted';
 
 export default function SyncBackupPage() {
   const { user, isGuest, syncData } = useAuth();
@@ -37,6 +56,15 @@ export default function SyncBackupPage() {
   const [selectedStrategy, setSelectedStrategy] = useState<SyncStrategy>('merge');
   const [isSyncing, setIsSyncing] = useState(false);
   const [deviceId, setDeviceId] = useState<string>('');
+  
+  // Export/Import state
+  const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [showExportDialog, setShowExportDialog] = useState(false);
+  const [showUnencryptedWarning, setShowUnencryptedWarning] = useState(false);
+  const [importResult, setImportResult] = useState<{ success: boolean; message: string; stats?: { providers: number; favorites: number; recents: number } } | null>(null);
+  
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     // Get sync status
@@ -72,22 +100,21 @@ export default function SyncBackupPage() {
     }
   };
 
-  const handleExport = async () => {
+  const handleExport = async (type: ExportType) => {
+    setIsExporting(true);
+    setShowExportDialog(false);
+    setShowUnencryptedWarning(false);
+    
     try {
-      const data = await localStore.exportAll();
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `streamvault-backup-${new Date().toISOString().split('T')[0]}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      const content = type === 'encrypted' 
+        ? await backupService.exportEncrypted()
+        : await backupService.exportUnencrypted();
+      
+      backupService.downloadBackup(content, type === 'encrypted');
       
       toast({
         title: "Export complete",
-        description: "Your backup file has been downloaded.",
+        description: `Your ${type === 'encrypted' ? 'encrypted ' : ''}backup has been downloaded.`,
       });
     } catch (error) {
       toast({
@@ -95,35 +122,73 @@ export default function SyncBackupPage() {
         description: error instanceof Error ? error.message : "Unknown error",
         variant: "destructive",
       });
+    } finally {
+      setIsExporting(false);
     }
   };
 
-  const handleImport = async () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.json';
-    input.onchange = async (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (!file) return;
+  const handleExportClick = () => {
+    setShowExportDialog(true);
+  };
+
+  const handleUnencryptedExport = () => {
+    setShowExportDialog(false);
+    setShowUnencryptedWarning(true);
+  };
+
+  const handleImportClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    setIsImporting(true);
+    setImportResult(null);
+    
+    try {
+      const content = await file.text();
+      const result = await backupService.importBackup(content);
       
-      try {
-        const text = await file.text();
-        const data = JSON.parse(text);
-        await localStore.importAll(data);
-        
+      if (result.success) {
+        setImportResult({
+          success: true,
+          message: 'Backup restored successfully!',
+          stats: result.stats,
+        });
         toast({
           title: "Import complete",
           description: "Your data has been restored.",
         });
-      } catch (error) {
+      } else {
+        setImportResult({
+          success: false,
+          message: result.error || 'Failed to import backup',
+        });
         toast({
           title: "Import failed",
-          description: "Invalid backup file format.",
+          description: result.error,
           variant: "destructive",
         });
       }
-    };
-    input.click();
+    } catch (error) {
+      setImportResult({
+        success: false,
+        message: 'Failed to read backup file',
+      });
+      toast({
+        title: "Import failed",
+        description: "Could not read the backup file.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsImporting(false);
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
   };
 
   return (
@@ -300,19 +365,57 @@ export default function SyncBackupPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* Import result */}
+            {importResult && (
+              <Alert variant={importResult.success ? "default" : "destructive"}>
+                {importResult.success ? (
+                  <CheckCircle2 className="h-4 w-4" />
+                ) : (
+                  <AlertCircle className="h-4 w-4" />
+                )}
+                <AlertTitle>{importResult.success ? 'Success' : 'Error'}</AlertTitle>
+                <AlertDescription>
+                  {importResult.message}
+                  {importResult.stats && (
+                    <div className="mt-2 text-sm">
+                      Restored: {importResult.stats.providers} providers, {importResult.stats.favorites} favorites, {importResult.stats.recents} recent items
+                    </div>
+                  )}
+                </AlertDescription>
+              </Alert>
+            )}
+
             <div className="grid grid-cols-2 gap-4">
-              <Button variant="outline" className="h-auto py-4" onClick={handleExport}>
+              <Button 
+                variant="outline" 
+                className="h-auto py-4" 
+                onClick={handleExportClick}
+                disabled={isExporting}
+              >
                 <div className="flex flex-col items-center gap-2">
-                  <FileDown className="w-6 h-6" />
+                  {isExporting ? (
+                    <Loader2 className="w-6 h-6 animate-spin" />
+                  ) : (
+                    <FileDown className="w-6 h-6" />
+                  )}
                   <span>Export Backup</span>
                   <span className="text-xs text-muted-foreground">
-                    Download as JSON
+                    Download as file
                   </span>
                 </div>
               </Button>
-              <Button variant="outline" className="h-auto py-4" onClick={handleImport}>
+              <Button 
+                variant="outline" 
+                className="h-auto py-4" 
+                onClick={handleImportClick}
+                disabled={isImporting}
+              >
                 <div className="flex flex-col items-center gap-2">
-                  <FileUp className="w-6 h-6" />
+                  {isImporting ? (
+                    <Loader2 className="w-6 h-6 animate-spin" />
+                  ) : (
+                    <FileUp className="w-6 h-6" />
+                  )}
                   <span>Import Backup</span>
                   <span className="text-xs text-muted-foreground">
                     Restore from file
@@ -321,16 +424,103 @@ export default function SyncBackupPage() {
               </Button>
             </div>
 
+            {/* Hidden file input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json"
+              className="hidden"
+              onChange={handleFileSelected}
+            />
+
             <div className="flex items-start gap-2 p-3 rounded-lg bg-muted/50 text-sm">
-              <AlertCircle className="w-4 h-4 text-muted-foreground mt-0.5" />
+              <ShieldCheck className="w-4 h-4 text-primary mt-0.5" />
               <p className="text-muted-foreground">
-                Local backups include providers, favorites, recently watched, and settings.
-                EPG data is not included as it can be re-downloaded.
+                Backups are encrypted by default. Your playlist URLs and credentials are never stored in plain text.
               </p>
             </div>
           </CardContent>
         </Card>
       </div>
+
+      {/* Export Type Dialog */}
+      <Dialog open={showExportDialog} onOpenChange={setShowExportDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Export Backup</DialogTitle>
+            <DialogDescription>
+              Choose how you want to export your backup
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <Button
+              variant="outline"
+              className="w-full h-auto py-4 justify-start"
+              onClick={() => handleExport('encrypted')}
+            >
+              <Lock className="w-5 h-5 mr-3 text-primary" />
+              <div className="text-left">
+                <p className="font-medium">Encrypted (Recommended)</p>
+                <p className="text-sm text-muted-foreground">
+                  Your data is encrypted and can only be restored on this device
+                </p>
+              </div>
+            </Button>
+            
+            <Button
+              variant="outline"
+              className="w-full h-auto py-4 justify-start"
+              onClick={handleUnencryptedExport}
+            >
+              <Unlock className="w-5 h-5 mr-3 text-muted-foreground" />
+              <div className="text-left">
+                <p className="font-medium">Unencrypted</p>
+                <p className="text-sm text-muted-foreground">
+                  Can be restored on any device, but credentials are visible
+                </p>
+              </div>
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Unencrypted Warning Dialog */}
+      <Dialog open={showUnencryptedWarning} onOpenChange={setShowUnencryptedWarning}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="w-5 h-5" />
+              Security Warning
+            </DialogTitle>
+            <DialogDescription>
+              Unencrypted backups contain sensitive information
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="py-4">
+            <Alert variant="destructive">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Your playlist URLs and credentials will be visible!</AlertTitle>
+              <AlertDescription>
+                Anyone with access to this file can see your IPTV provider details. Only use this option if you need to transfer to a different device.
+              </AlertDescription>
+            </Alert>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowUnencryptedWarning(false)}>
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive" 
+              onClick={() => handleExport('unencrypted')}
+            >
+              Export Unencrypted
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppLayout>
   );
 }
