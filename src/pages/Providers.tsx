@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, MoreVertical, Trash2, Edit, RefreshCw, CheckCircle2, XCircle } from "lucide-react";
+import { Plus, MoreVertical, Trash2, Edit, RefreshCw, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,59 +11,35 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { EmptyState } from "@/components/ui/custom";
-import { Provider } from "@/types/iptv";
-import { toast } from "sonner";
-
-const initialProviders: Provider[] = [
-  {
-    id: "1",
-    userId: "user1",
-    name: "My IPTV Provider",
-    type: "m3u",
-    m3uUrl: "https://example.com/playlist.m3u",
-    epgUrl: "https://example.com/epg.xml",
-    lastSync: new Date(Date.now() - 1000 * 60 * 60 * 2),
-    channelCount: 156,
-    isActive: true,
-  },
-];
+import { useProviders, CreateProviderData } from "@/hooks/useProviders";
 
 export default function ProvidersPage() {
-  const [providers, setProviders] = useState<Provider[]>(initialProviders);
+  const { providers, loading, addProvider, deleteProvider, refreshProvider } = useProviders();
   const [showAddForm, setShowAddForm] = useState(false);
 
-  const handleAddProvider = (data: ProviderFormData) => {
-    const newProvider: Provider = {
-      id: Date.now().toString(),
-      userId: "user1",
+  const handleAddProvider = async (data: ProviderFormData) => {
+    const providerData: CreateProviderData = {
       name: data.name,
       type: data.type === "xtream" ? "xtream" : "m3u",
-      m3uUrl: data.m3uUrl,
-      xtreamHost: data.xtreamHost,
-      xtreamUser: data.xtreamUser,
-      epgUrl: data.epgUrl,
-      lastSync: new Date(),
-      channelCount: 0,
-      isActive: true,
+      m3u_url: data.m3uUrl,
+      xtream_host: data.xtreamHost,
+      xtream_user: data.xtreamUser,
+      xtream_pass: data.xtreamPass,
+      epg_url: data.epgUrl,
     };
 
-    setProviders((prev) => [...prev, newProvider]);
-    setShowAddForm(false);
-    toast.success("Provider added successfully!");
+    const success = await addProvider(providerData);
+    if (success) {
+      setShowAddForm(false);
+    }
   };
 
-  const handleDeleteProvider = (id: string) => {
-    setProviders((prev) => prev.filter((p) => p.id !== id));
-    toast.success("Provider removed");
+  const handleDeleteProvider = async (id: string) => {
+    await deleteProvider(id);
   };
 
-  const handleRefreshProvider = (id: string) => {
-    setProviders((prev) =>
-      prev.map((p) =>
-        p.id === id ? { ...p, lastSync: new Date() } : p
-      )
-    );
-    toast.success("Provider refreshed");
+  const handleRefreshProvider = async (id: string) => {
+    await refreshProvider(id);
   };
 
   if (showAddForm) {
@@ -90,7 +66,11 @@ export default function ProvidersPage() {
           </Button>
         </div>
 
-        {providers.length === 0 ? (
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          </div>
+        ) : providers.length === 0 ? (
           <EmptyState
             icon={Plus}
             title="No providers yet"
@@ -110,7 +90,7 @@ export default function ProvidersPage() {
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                        {provider.isActive ? (
+                        {provider.is_active ? (
                           <CheckCircle2 className="w-5 h-5 text-success" />
                         ) : (
                           <XCircle className="w-5 h-5 text-destructive" />
@@ -153,21 +133,21 @@ export default function ProvidersPage() {
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
                       <p className="text-muted-foreground">Channels</p>
-                      <p className="font-semibold">{provider.channelCount}</p>
+                      <p className="font-semibold">{provider.channel_count}</p>
                     </div>
                     <div>
                       <p className="text-muted-foreground">Last Sync</p>
                       <p className="font-semibold">
-                        {provider.lastSync
-                          ? new Date(provider.lastSync).toLocaleString()
+                        {provider.last_sync
+                          ? new Date(provider.last_sync).toLocaleString()
                           : "Never"}
                       </p>
                     </div>
                   </div>
-                  {provider.m3uUrl && (
+                  {provider.m3u_url && (
                     <div className="mt-3 pt-3 border-t border-border">
                       <p className="text-xs text-muted-foreground truncate">
-                        {provider.m3uUrl}
+                        {provider.m3u_url}
                       </p>
                     </div>
                   )}
