@@ -35,7 +35,7 @@ interface SettingsSection {
 
 const sections: SettingsSection[] = [
   { id: "account", icon: User, label: "Account" },
-  { id: "player", icon: Tv, label: "Player" },
+  { id: "player", icon: Tv, label: "Media Player" },
   { id: "parental", icon: Shield, label: "Parental Controls" },
   { id: "subscription", icon: CreditCard, label: "Subscription" },
   { id: "cache", icon: Database, label: "Data & Cache" },
@@ -54,6 +54,11 @@ export default function SettingsPage() {
     hardwareAcceleration: true,
     parentalEnabled: false,
     epgRefresh: 6,
+    // Player engine settings
+    preferredEngine: "auto",
+    bufferMode: "balanced",
+    subtitleDelay: 0,
+    audioLanguage: "",
   });
 
   const updateSetting = <K extends keyof typeof settings>(
@@ -62,6 +67,12 @@ export default function SettingsPage() {
   ) => {
     setSettings((prev) => ({ ...prev, [key]: value }));
   };
+  
+  const engineOptions = [
+    { id: "auto", displayName: "Auto (Recommended)", available: true },
+    { id: "shaka", displayName: "Shaka Player", available: true },
+    { id: "html5", displayName: "HTML5 (Fallback)", available: true },
+  ];
 
   const trialDaysRemaining = APP_CONFIG.subscription.trialDays;
 
@@ -164,66 +175,112 @@ export default function SettingsPage() {
 
             {/* Player Section */}
             {activeSection === "player" && (
-              <Card variant="glass">
-                <CardHeader>
-                  <CardTitle>Player Settings</CardTitle>
-                  <CardDescription>Configure playback behavior</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <Play className="w-5 h-5 text-muted-foreground" />
-                      <div>
-                        <Label>Auto-play</Label>
-                        <p className="text-sm text-muted-foreground">Start playing automatically</p>
-                      </div>
-                    </div>
-                    <Switch
-                      checked={settings.autoPlay}
-                      onCheckedChange={(v) => updateSetting("autoPlay", v)}
-                    />
-                  </div>
-                  <Separator />
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <Clock className="w-5 h-5 text-muted-foreground" />
-                      <div>
-                        <Label>Start on last channel</Label>
-                        <p className="text-sm text-muted-foreground">Resume from where you left</p>
-                      </div>
-                    </div>
-                    <Switch
-                      checked={settings.startOnLastChannel}
-                      onCheckedChange={(v) => updateSetting("startOnLastChannel", v)}
-                    />
-                  </div>
-                  <Separator />
-                  <div className="space-y-3">
+              <>
+                <Card variant="glass">
+                  <CardHeader>
+                    <CardTitle>Media Player</CardTitle>
+                    <CardDescription>Choose your preferred player engine</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
                     <div className="flex items-center justify-between">
-                      <Label>Buffer Size</Label>
-                      <span className="text-sm text-muted-foreground">{settings.bufferSize}s</span>
+                      <div>
+                        <Label>Player Engine</Label>
+                        <p className="text-sm text-muted-foreground">Auto selects the best player for your platform</p>
+                      </div>
+                      <Select value={settings.preferredEngine} onValueChange={(v) => updateSetting("preferredEngine", v)}>
+                        <SelectTrigger className="w-48">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {engineOptions.map(opt => (
+                            <SelectItem key={opt.id} value={opt.id} disabled={!opt.available}>
+                              {opt.displayName}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
-                    <Slider
-                      value={[settings.bufferSize]}
-                      onValueChange={([v]) => updateSetting("bufferSize", v)}
-                      min={10}
-                      max={60}
-                      step={5}
-                    />
-                  </div>
-                  <Separator />
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <Label>Hardware Acceleration</Label>
-                      <p className="text-sm text-muted-foreground">Better performance when enabled</p>
+                    <Separator />
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <Label>Buffer Mode</Label>
+                        <p className="text-sm text-muted-foreground">Balance between latency and stability</p>
+                      </div>
+                      <Select value={settings.bufferMode} onValueChange={(v) => updateSetting("bufferMode", v)}>
+                        <SelectTrigger className="w-40">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="low-latency">Low Latency</SelectItem>
+                          <SelectItem value="balanced">Balanced</SelectItem>
+                          <SelectItem value="stability">Stability</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
-                    <Switch
-                      checked={settings.hardwareAcceleration}
-                      onCheckedChange={(v) => updateSetting("hardwareAcceleration", v)}
-                    />
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+
+                <Card variant="glass">
+                  <CardHeader>
+                    <CardTitle>Playback Settings</CardTitle>
+                    <CardDescription>Configure playback behavior</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <Play className="w-5 h-5 text-muted-foreground" />
+                        <div>
+                          <Label>Auto-play</Label>
+                          <p className="text-sm text-muted-foreground">Start playing automatically</p>
+                        </div>
+                      </div>
+                      <Switch
+                        checked={settings.autoPlay}
+                        onCheckedChange={(v) => updateSetting("autoPlay", v)}
+                      />
+                    </div>
+                    <Separator />
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <Clock className="w-5 h-5 text-muted-foreground" />
+                        <div>
+                          <Label>Start on last channel</Label>
+                          <p className="text-sm text-muted-foreground">Resume from where you left</p>
+                        </div>
+                      </div>
+                      <Switch
+                        checked={settings.startOnLastChannel}
+                        onCheckedChange={(v) => updateSetting("startOnLastChannel", v)}
+                      />
+                    </div>
+                    <Separator />
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <Label>Subtitle Delay</Label>
+                        <span className="text-sm text-muted-foreground">{settings.subtitleDelay}ms</span>
+                      </div>
+                      <Slider
+                        value={[settings.subtitleDelay]}
+                        onValueChange={([v]) => updateSetting("subtitleDelay", v)}
+                        min={-2000}
+                        max={2000}
+                        step={100}
+                      />
+                    </div>
+                    <Separator />
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <Label>Hardware Acceleration</Label>
+                        <p className="text-sm text-muted-foreground">Better performance when enabled</p>
+                      </div>
+                      <Switch
+                        checked={settings.hardwareAcceleration}
+                        onCheckedChange={(v) => updateSetting("hardwareAcceleration", v)}
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
+              </>
             )}
 
             {/* Parental Section */}
