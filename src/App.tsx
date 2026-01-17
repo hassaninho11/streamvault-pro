@@ -7,6 +7,7 @@ import { AuthProvider } from "@/hooks/useAuth";
 import { TVModeProvider } from "@/contexts/TVModeContext";
 import { ProfileProvider } from "@/contexts/ProfileContext";
 import { MultiScreenProvider } from "@/contexts/MultiScreenContext";
+import { PlaylistLoadingOverlay } from "@/components/loading/PlaylistLoadingOverlay";
 import Home from "./pages/Home";
 import LiveTV from "./pages/LiveTV";
 import Movies from "./pages/Movies";
@@ -57,6 +58,7 @@ const App = () => (
             <TooltipProvider>
               <Toaster />
               <Sonner />
+              <PlaylistLoadingOverlay />
               <BrowserRouter>
                 <AppRoutes />
               </BrowserRouter>
