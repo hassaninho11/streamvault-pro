@@ -745,10 +745,10 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
           showControls ? "opacity-100" : "opacity-0 pointer-events-none"
         )}
       >
-        {/* Top Bar - Channel Info */}
+        {/* Top Bar - Channel/VOD Info */}
         <div className="absolute top-0 left-0 right-0 p-4">
           <div className="flex items-center gap-3">
-            {channel.logoUrl && (
+            {channel?.logoUrl && (
               <img
                 src={channel.logoUrl}
                 alt={channel.name}
@@ -756,8 +756,16 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
               />
             )}
             <div>
-              <h3 className="font-semibold">{channel.name}</h3>
-              <p className="text-sm text-muted-foreground">{channel.group}</p>
+              <h3 className="font-semibold">{vodTitle || channel?.name || 'Media'}</h3>
+              <p className="text-sm text-muted-foreground">
+                {channel?.group || (directStreamUrl ? 'VOD' : '')}
+                {isUsingProxy && (
+                  <span className="ml-2 inline-flex items-center gap-1 text-xs text-primary">
+                    <Shield className="w-3 h-3" />
+                    Proxy
+                  </span>
+                )}
+              </p>
             </div>
           </div>
         </div>
