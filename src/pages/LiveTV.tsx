@@ -1,4 +1,4 @@
-import { useMemo, useCallback, useEffect } from "react";
+import { useMemo, useCallback, useEffect, useRef } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { Loader2, Tv } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
@@ -42,15 +42,27 @@ export default function LiveTVPage() {
   const { isLoading, channelCount } = useChannelLoader();
   const filteredIds = useFilteredChannelIds();
   const index = useChannelStore((state) => state.index);
-  const favoriteIds = useChannelStore((state) => state.favoriteIds);
   const toggleFavorite = useChannelStore((state) => state.toggleFavorite);
-  const nowNextMap = useChannelStore((state) => state.nowNextMap);
+  
+  // Use stable reference for favorites check function instead of the Set itself
+  const isFavorite = useCallback((id: string) => {
+    return useChannelStore.getState().favoriteIds.has(id);
+  }, []);
+  
+  // Get now/next data for a specific channel
+  const getNowNext = useCallback((id: string) => {
+    return useChannelStore.getState().nowNextMap.get(id);
+  }, []);
 
-  // Memoize channels - only recompute when index/favoriteIds change, NOT on every render
+  // Subscribe to favoriteIds changes to trigger re-render when favorites change
+  const favoriteIdsVersion = useChannelStore((state) => state.favoriteIds.size);
+
+  // Memoize channels - only recompute when index/filteredIds/favorites change
   // For performance with 7000+ channels, we pass this to VirtualizedChannelList
   const channels: Channel[] = useMemo(() => {
     if (!index || !index.byId) return [];
     const result: Channel[] = [];
+    const favoriteIds = useChannelStore.getState().favoriteIds;
     for (const id of filteredIds) {
       const channel = index.byId.get(id);
       if (channel) {
@@ -58,18 +70,20 @@ export default function LiveTVPage() {
       }
     }
     return result;
-  }, [filteredIds, index, favoriteIds]);
+  }, [filteredIds, index, favoriteIdsVersion]);
 
   const selectedChannel = useMemo(() => {
     if (!channelId || !index) return null;
     const core = index.byId.get(channelId);
     if (!core) return null;
-    return toUIChannel(core, favoriteIds.has(channelId));
-  }, [channelId, index, favoriteIds]);
+    return toUIChannel(core, isFavorite(channelId));
+  }, [channelId, index, isFavorite, favoriteIdsVersion]);
 
-  // Track channel viewing
+  // Track channel viewing - use ref to prevent re-running effect
+  const lastTrackedChannel = useRef<string | null>(null);
   useEffect(() => {
-    if (channelId) {
+    if (channelId && channelId !== lastTrackedChannel.current) {
+      lastTrackedChannel.current = channelId;
       addToRecentlyWatched(channelId);
     }
   }, [channelId, addToRecentlyWatched]);
@@ -99,7 +113,7 @@ export default function LiveTVPage() {
   }, [currentIndex, channels, handleSelectChannel]);
 
   // Get EPG data for selected channel
-  const epgData = selectedChannel ? nowNextMap.get(selectedChannel.id) : undefined;
+  const epgData = selectedChannel ? getNowNext(selectedChannel.id) : undefined;
   const currentProgram: EpgProgram | undefined = epgData?.now ? {
     id: epgData.now.id,
     channelId: epgData.now.channelId,

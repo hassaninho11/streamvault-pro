@@ -44,7 +44,7 @@ export function useRecentlyWatched() {
     fetchRecentlyWatched();
   }, [fetchRecentlyWatched]);
 
-  const addToRecentlyWatched = async (
+  const addToRecentlyWatched = useCallback(async (
     channelId: string,
     providerId?: string
   ): Promise<boolean> => {
@@ -63,13 +63,14 @@ export function useRecentlyWatched() {
       );
 
       if (error) throw error;
-      await fetchRecentlyWatched();
+      // Don't refetch immediately - this can cause re-render loops
+      // await fetchRecentlyWatched();
       return true;
     } catch (err) {
       console.error("Error adding to recently watched:", err);
       return false;
     }
-  };
+  }, [user]);
 
   const updateWatchDuration = async (
     channelId: string,

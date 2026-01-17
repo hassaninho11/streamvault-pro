@@ -5,6 +5,7 @@
 
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
+import { useShallow } from 'zustand/react/shallow';
 import type { CoreChannel, ChannelIndex, ChannelViewModel, CoreEpgProgram } from '../../core/types';
 import { searchChannels, getChannelsByGroup, getGroupsWithCounts } from '../../core/indexing/channelIndex';
 
@@ -98,28 +99,53 @@ export const useChannelStore = create<ChannelState>()(
 
 // ============= Selectors (memoized via Zustand) =============
 
+// Cached filtered IDs to prevent re-computation on every render
+let cachedFilteredIds: string[] = [];
+let cachedSearchQuery = '';
+let cachedSelectedGroup: string | null = null;
+let cachedIndex: ChannelIndex | null = null;
+
 /**
  * Get filtered channel IDs based on current search/group
  * Returns IDs only - components lookup channel data as needed
+ * Uses caching to prevent infinite re-renders
  */
 export const useFilteredChannelIds = (): string[] => {
-  return useChannelStore((state) => {
-    const { index, searchQuery, selectedGroup } = state;
-    if (!index) return [];
-    
-    // Search takes priority
-    if (searchQuery.length > 0) {
-      return searchChannels(searchQuery, index);
-    }
-    
+  const searchQuery = useChannelStore((state) => state.searchQuery);
+  const selectedGroup = useChannelStore((state) => state.selectedGroup);
+  const index = useChannelStore((state) => state.index);
+  
+  // Return cached result if inputs haven't changed
+  if (
+    index === cachedIndex &&
+    searchQuery === cachedSearchQuery &&
+    selectedGroup === cachedSelectedGroup
+  ) {
+    return cachedFilteredIds;
+  }
+  
+  // Update cache
+  cachedIndex = index;
+  cachedSearchQuery = searchQuery;
+  cachedSelectedGroup = selectedGroup;
+  
+  if (!index) {
+    cachedFilteredIds = [];
+    return cachedFilteredIds;
+  }
+  
+  // Search takes priority
+  if (searchQuery.length > 0) {
+    cachedFilteredIds = searchChannels(searchQuery, index);
+  } else if (selectedGroup) {
     // Group filter
-    if (selectedGroup) {
-      return getChannelsByGroup(selectedGroup, index);
-    }
-    
+    cachedFilteredIds = getChannelsByGroup(selectedGroup, index);
+  } else {
     // All channels
-    return index.allIds;
-  });
+    cachedFilteredIds = index.allIds;
+  }
+  
+  return cachedFilteredIds;
 };
 
 /**
