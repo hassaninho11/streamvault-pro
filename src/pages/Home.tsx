@@ -26,9 +26,8 @@ export default function HomePage() {
   const { isLoading, channelCount, providerCount } = useChannelLoader();
   const { providers } = useProviders();
   const { recentlyWatched } = useRecentlyWatched();
-  const recentIds = recentlyWatched.map(r => r.channel_id);
+  const recentIds = recentlyWatched?.map(r => r.channel_id) ?? [];
   const favoriteIds = useFavoriteIds();
-  const allChannelIds = useFilteredChannelIds();
   const index = useChannelStore((state) => state.index);
   const nowNextMap = useChannelStore((state) => state.nowNextMap);
 
