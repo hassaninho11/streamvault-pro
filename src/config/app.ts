@@ -44,6 +44,8 @@ export const APP_CONFIG = {
       'parental_controls',
       'offline_epg',
       'unlimited_providers',
+      'ai_subtitles',
+      'vod_continue_watching',
     ] as const,
     
     // Whether basic playback requires subscription after trial
