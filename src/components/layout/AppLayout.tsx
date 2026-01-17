@@ -1,0 +1,167 @@
+import { ReactNode, useState } from "react";
+import { NavLink, useLocation } from "react-router-dom";
+import { 
+  Home, 
+  Tv, 
+  Calendar, 
+  Search, 
+  Settings, 
+  Star, 
+  Clock, 
+  Plus,
+  Menu,
+  X,
+  Zap
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { APP_CONFIG } from "@/config/app";
+
+interface AppLayoutProps {
+  children: ReactNode;
+}
+
+const navItems = [
+  { to: "/", icon: Home, label: "Home" },
+  { to: "/live", icon: Tv, label: "Live TV" },
+  { to: "/epg", icon: Calendar, label: "Guide" },
+  { to: "/search", icon: Search, label: "Search" },
+  { to: "/favorites", icon: Star, label: "Favorites" },
+  { to: "/recent", icon: Clock, label: "Recent" },
+];
+
+const bottomNavItems = [
+  { to: "/providers", icon: Plus, label: "Providers" },
+  { to: "/settings", icon: Settings, label: "Settings" },
+];
+
+export function AppLayout({ children }: AppLayoutProps) {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const location = useLocation();
+
+  return (
+    <div className="flex h-screen bg-background overflow-hidden">
+      {/* Mobile Header */}
+      <header className="fixed top-0 left-0 right-0 z-50 lg:hidden bg-background/95 backdrop-blur-sm border-b border-border">
+        <div className="flex items-center justify-between px-4 h-14">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setSidebarOpen(true)}
+          >
+            <Menu className="w-5 h-5" />
+          </Button>
+          <div className="flex items-center gap-2">
+            <Zap className="w-6 h-6 text-primary" />
+            <span className="font-bold text-lg">{APP_CONFIG.name}</span>
+          </div>
+          <Button variant="ghost" size="icon" asChild>
+            <NavLink to="/search">
+              <Search className="w-5 h-5" />
+            </NavLink>
+          </Button>
+        </div>
+      </header>
+
+      {/* Mobile Sidebar Overlay */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* Sidebar */}
+      <aside
+        className={cn(
+          "fixed lg:relative z-50 lg:z-0 h-full w-64 bg-sidebar border-r border-sidebar-border transition-transform duration-300 lg:translate-x-0",
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        )}
+      >
+        <div className="flex flex-col h-full">
+          {/* Logo */}
+          <div className="flex items-center justify-between px-4 h-16 border-b border-sidebar-border">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-glow">
+                <Zap className="w-5 h-5 text-primary-foreground" />
+              </div>
+              <div>
+                <h1 className="font-bold text-lg text-sidebar-foreground">{APP_CONFIG.name}</h1>
+                <p className="text-xs text-muted-foreground">IPTV Player</p>
+              </div>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="lg:hidden"
+              onClick={() => setSidebarOpen(false)}
+            >
+              <X className="w-5 h-5" />
+            </Button>
+          </div>
+
+          {/* Navigation */}
+          <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+            {navItems.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                onClick={() => setSidebarOpen(false)}
+                className={({ isActive }) =>
+                  cn(
+                    "nav-item",
+                    isActive && "active"
+                  )
+                }
+              >
+                <item.icon className="w-5 h-5" />
+                <span>{item.label}</span>
+              </NavLink>
+            ))}
+          </nav>
+
+          {/* Bottom Section */}
+          <div className="px-3 py-4 border-t border-sidebar-border space-y-1">
+            {bottomNavItems.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                onClick={() => setSidebarOpen(false)}
+                className={({ isActive }) =>
+                  cn(
+                    "nav-item",
+                    isActive && "active"
+                  )
+                }
+              >
+                <item.icon className="w-5 h-5" />
+                <span>{item.label}</span>
+              </NavLink>
+            ))}
+
+            {/* Trial Banner */}
+            <div className="mt-4 p-3 rounded-lg bg-gradient-to-r from-primary/20 to-accent/20 border border-primary/30">
+              <div className="flex items-center gap-2 mb-2">
+                <Zap className="w-4 h-4 text-primary" />
+                <span className="text-sm font-medium">Free Trial</span>
+              </div>
+              <p className="text-xs text-muted-foreground mb-3">
+                {APP_CONFIG.subscription.trialDays} days remaining
+              </p>
+              <Button size="sm" variant="premium" className="w-full">
+                Upgrade • {APP_CONFIG.subscription.pricePerYear} {APP_CONFIG.subscription.currency}/year
+              </Button>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      {/* Main Content */}
+      <main className="flex-1 overflow-y-auto pt-14 lg:pt-0">
+        <div className="min-h-full">
+          {children}
+        </div>
+      </main>
+    </div>
+  );
+}
