@@ -10,7 +10,7 @@ interface TVChannelListProps {
   channels: Channel[];
   selectedChannel?: Channel | null;
   onSelectChannel: (channel: Channel) => void;
-  onToggleFavorite?: (channelId: string) => void;
+  onToggleFavorite?: (channel: Channel) => void;
   className?: string;
 }
 
@@ -160,8 +160,8 @@ export function TVChannelList({
     onSelectChannel(channel);
   }, [onSelectChannel]);
 
-  const handleToggleFavorite = useCallback((channelId: string) => {
-    onToggleFavorite?.(channelId);
+  const handleToggleFavorite = useCallback((channel: Channel) => {
+    onToggleFavorite?.(channel);
   }, [onToggleFavorite]);
 
   return (
@@ -190,7 +190,7 @@ export function TVChannelList({
               isSelected={isSelected}
               isFocused={false}
               onSelect={() => handleSelectChannel(channel)}
-              onToggleFavorite={() => handleToggleFavorite(channel.id)}
+              onToggleFavorite={() => handleToggleFavorite(channel)}
               isTVMode={isTVMode}
               style={{
                 position: 'absolute',
