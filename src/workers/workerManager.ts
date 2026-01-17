@@ -11,6 +11,12 @@ import type {
   ParseEpgRequest,
   ParseEpgResponse 
 } from '../core/types';
+import type { DetectedContent } from '../core/parser/vodDetector';
+
+export interface ExtendedParsePlaylistResponse extends ParsePlaylistResponse {
+  movies: DetectedContent[];
+  series: DetectedContent[];
+}
 
 type PendingRequest<T> = {
   resolve: (value: T) => void;
@@ -96,9 +102,9 @@ class WorkerManager {
   async parsePlaylist(
     content: string,
     providerId: string
-  ): Promise<{ response: ParsePlaylistResponse; timing: { parseMs: number; indexMs: number } }> {
+  ): Promise<{ response: ExtendedParsePlaylistResponse; timing: { parseMs: number; indexMs: number } }> {
     const worker = this.getPlaylistWorker();
-    const response = await this.sendMessage<ParsePlaylistRequest, ParsePlaylistResponse & { timing?: { parseMs: number; indexMs: number } }>(
+    const response = await this.sendMessage<ParsePlaylistRequest, ExtendedParsePlaylistResponse & { timing?: { parseMs: number; indexMs: number } }>(
       worker,
       'PARSE_PLAYLIST',
       { content, providerId }

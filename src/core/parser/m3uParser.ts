@@ -1,12 +1,23 @@
 /**
  * M3U Parser - Pure TypeScript, runs in Web Worker
  * Optimized for parsing large playlists (10k+ channels)
+ * Now with VOD detection and separation
  */
 
 import type { ParsedM3UItem, ParsedPlaylist } from '../types';
+import { categorizePlaylist, type DetectedContent } from './vodDetector';
 
 const EXTINF_REGEX = /^#EXTINF:(-?\d*\.?\d*)\s*,(.*)$/;
 const ATTR_REGEX = /([a-zA-Z0-9_-]+)="([^"]*)"/g;
+
+/**
+ * Extended playlist result with VOD separation
+ */
+export interface CategorizedPlaylist extends ParsedPlaylist {
+  liveItems: ParsedM3UItem[];
+  movieItems: DetectedContent[];
+  seriesItems: DetectedContent[];
+}
 
 /**
  * Parse M3U content into structured data
@@ -60,6 +71,23 @@ export function parseM3U(content: string): ParsedPlaylist {
     groups: Array.from(groupsSet).sort(),
     totalCount: items.length,
     parseTimeMs,
+  };
+}
+
+/**
+ * Parse M3U and categorize into live/movies/series
+ */
+export function parseM3UWithCategories(content: string): CategorizedPlaylist {
+  const basic = parseM3U(content);
+  const categorized = categorizePlaylist(basic.items);
+  
+  console.log(`[m3uParser] Categorized: ${categorized.live.length} live, ${categorized.movies.length} movies, ${categorized.series.length} series`);
+  
+  return {
+    ...basic,
+    liveItems: categorized.live,
+    movieItems: categorized.movies,
+    seriesItems: categorized.series,
   };
 }
 
