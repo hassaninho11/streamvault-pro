@@ -21,14 +21,18 @@ interface TVLayoutProps {
   children: ReactNode;
 }
 
+import { Film, MonitorPlay } from "lucide-react";
+
 const navItems = [
-  { to: "/", icon: Home, label: "Home" },
+  { to: "/", icon: Home, label: "Hem" },
   { to: "/live", icon: Tv, label: "Live TV" },
+  { to: "/movies", icon: Film, label: "Filmer" },
+  { to: "/series", icon: MonitorPlay, label: "Serier" },
   { to: "/epg", icon: Calendar, label: "Guide" },
-  { to: "/search", icon: Search, label: "Search" },
-  { to: "/favorites", icon: Star, label: "Favorites" },
-  { to: "/recent", icon: Clock, label: "Recent" },
-  { to: "/settings", icon: Settings, label: "Settings" },
+  { to: "/search", icon: Search, label: "Sök" },
+  { to: "/favorites", icon: Star, label: "Favoriter" },
+  { to: "/recent", icon: Clock, label: "Senaste" },
+  { to: "/settings", icon: Settings, label: "Inställningar" },
 ];
 
 export function TVLayout({ children }: TVLayoutProps) {
