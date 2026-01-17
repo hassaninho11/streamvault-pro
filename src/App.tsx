@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
 import { TVModeProvider } from "@/contexts/TVModeContext";
 import { ProfileProvider } from "@/contexts/ProfileContext";
+import { MultiScreenProvider } from "@/contexts/MultiScreenContext";
 import Home from "./pages/Home";
 import LiveTV from "./pages/LiveTV";
 import Movies from "./pages/Movies";
@@ -49,15 +50,17 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
       <ProfileProvider>
-        <TVModeProvider>
-          <TooltipProvider>
-            <Toaster />
-            <Sonner />
-            <BrowserRouter>
-              <AppRoutes />
-            </BrowserRouter>
-          </TooltipProvider>
-        </TVModeProvider>
+        <MultiScreenProvider>
+          <TVModeProvider>
+            <TooltipProvider>
+              <Toaster />
+              <Sonner />
+              <BrowserRouter>
+                <AppRoutes />
+              </BrowserRouter>
+            </TooltipProvider>
+          </TVModeProvider>
+        </MultiScreenProvider>
       </ProfileProvider>
     </AuthProvider>
   </QueryClientProvider>

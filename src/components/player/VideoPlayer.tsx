@@ -17,22 +17,27 @@ import {
   History,
   Rewind,
   FastForward,
+  PictureInPicture2,
+  Grid2X2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
 import { Channel } from "@/types/iptv";
 import { useCatchup } from "@/services/CatchupService";
+import { usePip } from "@/services/PipService";
+import { useMultiScreen } from "@/contexts/MultiScreenContext";
 
 interface VideoPlayerProps {
   channel: Channel | null;
   onPrevious?: () => void;
   onNext?: () => void;
   onOpenCatchup?: () => void;
+  onOpenMultiScreen?: () => void;
   className?: string;
 }
 
-export function VideoPlayer({ channel, onPrevious, onNext, onOpenCatchup, className }: VideoPlayerProps) {
+export function VideoPlayer({ channel, onPrevious, onNext, onOpenCatchup, onOpenMultiScreen, className }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -43,6 +48,12 @@ export function VideoPlayer({ channel, onPrevious, onNext, onOpenCatchup, classN
   const [showControls, setShowControls] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout>();
+  
+  // PiP hook
+  const { isActive: isPipActive, isSupported: isPipSupported, togglePip } = usePip(videoRef);
+  
+  // Multi-screen hook
+  const { isMultiScreenMode, enterMultiScreen } = useMultiScreen();
   
   // Timeshift/Catch-up hook
   const {
@@ -426,6 +437,36 @@ export function VideoPlayer({ channel, onPrevious, onNext, onOpenCatchup, classN
                 <History className="w-5 h-5" />
               </Button>
             )}
+
+            {/* PiP button */}
+            {isPipSupported && (
+              <Button 
+                variant="player" 
+                size="icon" 
+                onClick={togglePip}
+                title={isPipActive ? 'Avsluta bild-i-bild' : 'Bild-i-bild'}
+                className={cn(isPipActive && 'text-primary')}
+              >
+                <PictureInPicture2 className="w-5 h-5" />
+              </Button>
+            )}
+
+            {/* Multi-screen button */}
+            <Button 
+              variant="player" 
+              size="icon" 
+              onClick={() => {
+                if (onOpenMultiScreen) {
+                  onOpenMultiScreen();
+                } else {
+                  enterMultiScreen();
+                }
+              }}
+              title="Multi-screen"
+              className={cn(isMultiScreenMode && 'text-primary')}
+            >
+              <Grid2X2 className="w-5 h-5" />
+            </Button>
 
             {/* Settings */}
             <Button variant="player" size="icon">
