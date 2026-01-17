@@ -272,23 +272,22 @@ export function VideoPlayer({ channel, onPrevious, onNext, onOpenCatchup, onOpen
     }, 3000);
   };
 
-  const togglePlay = () => {
+  const togglePlay = useCallback(() => {
     if (videoRef.current) {
-      if (isPlaying) {
-        videoRef.current.pause();
-      } else {
+      if (videoRef.current.paused) {
         videoRef.current.play();
+      } else {
+        videoRef.current.pause();
       }
-      setIsPlaying(!isPlaying);
     }
-  };
+  }, []);
 
-  const toggleMute = () => {
+  const toggleMute = useCallback(() => {
     if (videoRef.current) {
-      videoRef.current.muted = !isMuted;
-      setIsMuted(!isMuted);
+      videoRef.current.muted = !videoRef.current.muted;
+      setIsMuted(videoRef.current.muted);
     }
-  };
+  }, []);
 
   const handleVolumeChange = (value: number[]) => {
     const newVolume = value[0];
@@ -299,7 +298,7 @@ export function VideoPlayer({ channel, onPrevious, onNext, onOpenCatchup, onOpen
     }
   };
 
-  const toggleFullscreen = async () => {
+  const toggleFullscreen = useCallback(async () => {
     if (!containerRef.current) return;
 
     if (!document.fullscreenElement) {
@@ -309,7 +308,82 @@ export function VideoPlayer({ channel, onPrevious, onNext, onOpenCatchup, onOpen
       await document.exitFullscreen();
       setIsFullscreen(false);
     }
-  };
+  }, []);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't handle if input element is focused
+      const activeEl = document.activeElement;
+      const isInputFocused = activeEl?.tagName === 'INPUT' || 
+                             activeEl?.tagName === 'TEXTAREA' || 
+                             activeEl?.getAttribute('contenteditable') === 'true';
+      
+      if (isInputFocused) return;
+      
+      switch (e.key) {
+        case ' ':
+        case 'k': // YouTube-style
+          e.preventDefault();
+          togglePlay();
+          break;
+        case 'ArrowUp':
+          e.preventDefault();
+          setVolume(prev => {
+            const newVol = Math.min(100, prev + 10);
+            if (videoRef.current) {
+              videoRef.current.volume = newVol / 100;
+              setIsMuted(newVol === 0);
+            }
+            return newVol;
+          });
+          break;
+        case 'ArrowDown':
+          e.preventDefault();
+          setVolume(prev => {
+            const newVol = Math.max(0, prev - 10);
+            if (videoRef.current) {
+              videoRef.current.volume = newVol / 100;
+              setIsMuted(newVol === 0);
+            }
+            return newVol;
+          });
+          break;
+        case 'ArrowLeft':
+          e.preventDefault();
+          if (catchupSource?.supportsTimeshift) {
+            seekBack(10);
+          }
+          break;
+        case 'ArrowRight':
+          e.preventDefault();
+          if (catchupSource?.supportsTimeshift) {
+            seekForward(10);
+          }
+          break;
+        case 'f':
+        case 'F':
+          e.preventDefault();
+          toggleFullscreen();
+          break;
+        case 'm':
+        case 'M':
+          e.preventDefault();
+          toggleMute();
+          break;
+        case 'Escape':
+          if (isFullscreen) {
+            e.preventDefault();
+            document.exitFullscreen();
+            setIsFullscreen(false);
+          }
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isFullscreen, catchupSource?.supportsTimeshift, seekBack, seekForward, togglePlay, toggleMute, toggleFullscreen]);
   
   // Helper functions for timeshift
   const formatTime = (timestamp?: number): string => {
