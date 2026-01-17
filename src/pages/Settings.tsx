@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Settings as SettingsIcon,
   User,
@@ -15,6 +15,7 @@ import {
   Trash2,
   Zap,
   Check,
+  Server,
 } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
@@ -24,9 +25,11 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { Input } from "@/components/ui/input";
 import { CacheManagement } from "@/components/settings/CacheManagement";
 import { APP_CONFIG } from "@/config/app";
 import { cn } from "@/lib/utils";
+import { localStore } from "@/data/stores/localStore";
 
 interface SettingsSection {
   id: string;
@@ -60,13 +63,40 @@ export default function SettingsPage() {
     bufferMode: "balanced",
     subtitleDelay: 0,
     audioLanguage: "",
+    // Stream proxy settings
+    customProxyUrl: "",
   });
+
+  // Load settings from localStore on mount
+  useEffect(() => {
+    localStore.getSettings().then((stored) => {
+      if (stored.playerSettings?.customProxyUrl) {
+        setSettings(prev => ({
+          ...prev,
+          customProxyUrl: stored.playerSettings.customProxyUrl || "",
+        }));
+      }
+    });
+  }, []);
 
   const updateSetting = <K extends keyof typeof settings>(
     key: K,
     value: typeof settings[K]
   ) => {
     setSettings((prev) => ({ ...prev, [key]: value }));
+    
+    // Persist proxy URL to localStore
+    if (key === "customProxyUrl") {
+      localStore.getSettings().then((stored) => {
+        localStore.saveSettings({
+          ...stored,
+          playerSettings: {
+            ...stored.playerSettings,
+            customProxyUrl: value as string,
+          },
+        });
+      });
+    }
   };
   
   const engineOptions = [
@@ -278,6 +308,44 @@ export default function SettingsPage() {
                         checked={settings.hardwareAcceleration}
                         onCheckedChange={(v) => updateSetting("hardwareAcceleration", v)}
                       />
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card variant="glass">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Server className="w-5 h-5" />
+                      Stream Proxy
+                    </CardTitle>
+                    <CardDescription>
+                      Configure a custom proxy server for HTTP streams. Required for playing HTTP streams on HTTPS pages when your IPTV provider blocks external proxies.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="proxyUrl">Custom Proxy URL</Label>
+                      <Input
+                        id="proxyUrl"
+                        type="url"
+                        placeholder="https://your-proxy.example.com/stream?url="
+                        value={settings.customProxyUrl}
+                        onChange={(e) => updateSetting("customProxyUrl", e.target.value)}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        The stream URL will be appended to this URL. Leave empty to use the default proxy.
+                      </p>
+                    </div>
+                    <div className="p-3 rounded-lg bg-muted/50 text-sm text-muted-foreground space-y-2">
+                      <p className="font-medium text-foreground">Why use a custom proxy?</p>
+                      <ul className="list-disc list-inside space-y-1 text-xs">
+                        <li>Some IPTV providers restrict streams to your home IP address</li>
+                        <li>Running your own proxy ensures streams come from your network</li>
+                        <li>A local proxy avoids Mixed Content browser restrictions</li>
+                      </ul>
+                      <p className="text-xs mt-2">
+                        Example: Run a local CORS proxy like <code className="bg-background px-1 rounded">local-cors-proxy</code> or deploy your own on your server.
+                      </p>
                     </div>
                   </CardContent>
                 </Card>
