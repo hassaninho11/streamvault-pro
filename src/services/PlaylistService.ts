@@ -2,17 +2,20 @@
  * PlaylistService - Handles fetching and parsing of M3U/Xtream playlists
  * Uses Web Workers for parsing to keep UI responsive
  * Uses edge function proxy to avoid CORS issues
+ * Implements IndexedDB caching for fast app restarts
  */
 
 import { workerManager } from '@/workers/workerManager';
 import { useChannelStore } from '@/data/stores/channelStore';
 import { supabase } from '@/integrations/supabase/client';
+import { cacheManager } from '@/data/cache/cacheManager';
 import type { CoreChannel, ChannelIndex } from '@/core/types';
 
 export interface PlaylistLoadResult {
   success: boolean;
   channelCount: number;
   groups: string[];
+  fromCache?: boolean;
   error?: string;
   timing?: {
     fetchMs: number;
@@ -21,12 +24,73 @@ export interface PlaylistLoadResult {
   };
 }
 
+/**
+ * Generate a simple hash for cache invalidation
+ */
+function generateHash(str: string): string {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32-bit integer
+  }
+  return hash.toString(36);
+}
+
 class PlaylistService {
+  /**
+   * Load channels from cache if available
+   * Returns true if cache was used, false if fresh fetch needed
+   */
+  async loadFromCache(providerId: string): Promise<PlaylistLoadResult | null> {
+    try {
+      const cached = await cacheManager.getCachedChannels(providerId);
+      
+      if (cached && cached.channels.length > 0) {
+        console.log(`[PlaylistService] Loading ${cached.channels.length} channels from cache for provider ${providerId}`);
+        
+        // Reconstruct index from cached channels
+        const index = this.buildIndexFromChannels(cached.channels);
+        
+        // Update channel store
+        const state = useChannelStore.getState();
+        const existingChannels = state.channels.filter(c => c.providerId !== providerId);
+        const mergedChannels = [...existingChannels, ...cached.channels];
+        
+        // Rebuild full index
+        const fullIndex = this.buildIndexFromChannels(mergedChannels);
+        useChannelStore.getState().setChannels(mergedChannels, fullIndex);
+        
+        return {
+          success: true,
+          channelCount: cached.channels.length,
+          groups: index.groups,
+          fromCache: true,
+        };
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('[PlaylistService] Cache load error:', error);
+      return null;
+    }
+  }
+
   /**
    * Fetch and parse an M3U playlist from URL
    */
-  async loadM3UPlaylist(url: string, providerId: string): Promise<PlaylistLoadResult> {
+  async loadM3UPlaylist(url: string, providerId: string, skipCache = false): Promise<PlaylistLoadResult> {
     const fetchStart = performance.now();
+    
+    // Try cache first (unless skipCache is true)
+    if (!skipCache) {
+      const cachedResult = await this.loadFromCache(providerId);
+      if (cachedResult) {
+        // Trigger background refresh
+        this.refreshInBackground(url, providerId);
+        return cachedResult;
+      }
+    }
     
     try {
       // Set loading state
@@ -48,6 +112,7 @@ class PlaylistService {
 
       const content = data.content;
       const fetchMs = performance.now() - fetchStart;
+      const contentHash = generateHash(content.slice(0, 5000)); // Hash first 5KB for speed
       
       useChannelStore.getState().setParseProgress(40);
 
@@ -59,13 +124,26 @@ class PlaylistService {
       // Reconstruct the index from serialized data
       const index = this.reconstructIndex(parseResult.channels, parseResult.index);
       
+      // Merge with existing channels from other providers
+      const state = useChannelStore.getState();
+      const existingChannels = state.channels.filter(c => c.providerId !== providerId);
+      const mergedChannels = [...existingChannels, ...parseResult.channels];
+      
+      // Rebuild full index with all channels
+      const fullIndex = this.buildIndexFromChannels(mergedChannels);
+      
       // Update channel store
-      useChannelStore.getState().setChannels(parseResult.channels, index);
+      useChannelStore.getState().setChannels(mergedChannels, fullIndex);
+      
+      // Cache the parsed channels for this provider
+      await cacheManager.setCachedChannels(providerId, parseResult.channels, contentHash);
+      console.log(`[PlaylistService] Cached ${parseResult.channels.length} channels for provider ${providerId}`);
 
       return {
         success: true,
         channelCount: parseResult.channels.length,
         groups: parseResult.index.groups,
+        fromCache: false,
         timing: {
           fetchMs,
           parseMs: timing.parseMs,
@@ -83,6 +161,67 @@ class PlaylistService {
         error: error instanceof Error ? error.message : 'Unknown error',
       };
     }
+  }
+
+  /**
+   * Refresh playlist in background without blocking UI
+   */
+  private async refreshInBackground(url: string, providerId: string): Promise<void> {
+    // Wait a bit before background refresh to let UI settle
+    await new Promise(resolve => setTimeout(resolve, 5000));
+    
+    console.log(`[PlaylistService] Background refresh for provider ${providerId}`);
+    await this.loadM3UPlaylist(url, providerId, true);
+  }
+
+  /**
+   * Build index from channels array
+   */
+  private buildIndexFromChannels(channels: CoreChannel[]): ChannelIndex {
+    const byId = new Map<string, CoreChannel>();
+    const byGroup = new Map<string, string[]>();
+    const byProvider = new Map<string, string[]>();
+    const searchTokens = new Map<string, Set<string>>();
+    const groups = new Set<string>();
+    
+    for (const channel of channels) {
+      byId.set(channel.id, channel);
+      
+      // By group
+      groups.add(channel.group);
+      const groupChannels = byGroup.get(channel.group) || [];
+      groupChannels.push(channel.id);
+      byGroup.set(channel.group, groupChannels);
+      
+      // By provider
+      const providerChannels = byProvider.get(channel.providerId) || [];
+      providerChannels.push(channel.id);
+      byProvider.set(channel.providerId, providerChannels);
+      
+      // Search tokens
+      const tokens = this.tokenize(channel.name);
+      for (const token of tokens) {
+        const existing = searchTokens.get(token) || new Set();
+        existing.add(channel.id);
+        searchTokens.set(token, existing);
+      }
+    }
+    
+    return {
+      byId,
+      byGroup,
+      byProvider,
+      searchTokens,
+      allIds: channels.map(c => c.id),
+      groups: Array.from(groups).sort(),
+    };
+  }
+  
+  private tokenize(str: string): string[] {
+    return str.toLowerCase()
+      .replace(/[^\w\s]/g, ' ')
+      .split(/\s+/)
+      .filter(t => t.length >= 2);
   }
 
   /**
