@@ -49,12 +49,15 @@ export default function LiveTVPage() {
   // Memoize channels - only recompute when index/favoriteIds change, NOT on every render
   // For performance with 7000+ channels, we pass this to VirtualizedChannelList
   const channels: Channel[] = useMemo(() => {
-    if (!index) return [];
-    return filteredIds.map(id => {
+    if (!index || !index.byId) return [];
+    const result: Channel[] = [];
+    for (const id of filteredIds) {
       const channel = index.byId.get(id);
-      if (!channel) return null;
-      return toUIChannel(channel, favoriteIds.has(id));
-    }).filter(Boolean) as Channel[];
+      if (channel) {
+        result.push(toUIChannel(channel, favoriteIds.has(id)));
+      }
+    }
+    return result;
   }, [filteredIds, index, favoriteIds]);
 
   const selectedChannel = useMemo(() => {
