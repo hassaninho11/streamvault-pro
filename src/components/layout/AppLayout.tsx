@@ -16,6 +16,7 @@ import {
   Zap,
   LogOut,
   Users,
+  Activity,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -41,6 +42,7 @@ const navItems = [
 
 const bottomNavItems = [
   { to: "/providers", icon: Plus, label: "Leverantörer" },
+  { to: "/health", icon: Activity, label: "Health" },
   { to: "/settings", icon: Settings, label: "Inställningar" },
 ];
 
