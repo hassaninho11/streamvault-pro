@@ -16,6 +16,7 @@ import {
   Check,
   Play,
   Loader2,
+  Lock,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -53,6 +54,7 @@ interface PlaybackBlockedScreenProps {
 // Icons for each strategy
 const strategyIcons: Record<PlaybackStrategy, React.ElementType> = {
   direct: Play,
+  upgraded_https: Lock,
   proxy_https: Shield,
   cast_chromecast: Cast,
   external_player: ExternalLink,

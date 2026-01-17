@@ -2,9 +2,9 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, range',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Expose-Headers': 'Content-Length, Content-Range, Content-Type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, range, accept-encoding',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS, HEAD',
+  'Access-Control-Expose-Headers': 'Content-Length, Content-Range, Content-Type, Accept-Ranges',
 };
 
 // Common user agents that IPTV providers accept
@@ -14,14 +14,77 @@ const USER_AGENTS = [
   'Kodi/20.2 (Windows NT 10.0; Win64; x64)',
   'ExoPlayerLib/2.19.1',
   'libmpv',
+  'IPTV Smarters Pro',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
 ];
+
+// SSRF Protection: Block private IP ranges
+function isPrivateIp(hostname: string): boolean {
+  // Check for private IP patterns
+  const privatePatterns = [
+    /^localhost$/i,
+    /^127\./,
+    /^10\./,
+    /^172\.(1[6-9]|2[0-9]|3[0-1])\./,
+    /^192\.168\./,
+    /^169\.254\./,
+    /^::1$/,
+    /^fe80:/i,
+    /^fc00:/i,
+    /^fd00:/i,
+  ];
+  
+  return privatePatterns.some(pattern => pattern.test(hostname));
+}
+
+// Validate URL and check for SSRF
+function validateUrl(urlString: string): URL | null {
+  try {
+    const url = new URL(urlString);
+    
+    // Only allow http/https
+    if (!['http:', 'https:'].includes(url.protocol)) {
+      console.error('[stream-proxy] Invalid protocol:', url.protocol);
+      return null;
+    }
+    
+    // Block private IPs
+    if (isPrivateIp(url.hostname)) {
+      console.error('[stream-proxy] Blocked private IP:', url.hostname);
+      return null;
+    }
+    
+    return url;
+  } catch {
+    return null;
+  }
+}
+
+// Hash URL for logging (never log full URLs)
+function hashUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.host}${parsed.pathname.substring(0, 30)}...`;
+  } catch {
+    return url.substring(0, 30) + '...';
+  }
+}
 
 serve(async (req: Request) => {
   const url = new URL(req.url);
+  const proxyOrigin = url.origin;
   
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
+  }
+
+  // Allow both GET and POST
+  if (!['GET', 'POST', 'HEAD'].includes(req.method)) {
+    return new Response(
+      JSON.stringify({ error: 'Method not allowed' }),
+      { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
   }
 
   // Get the stream URL from query parameter
@@ -34,26 +97,17 @@ serve(async (req: Request) => {
     );
   }
 
+  // Validate URL and check for SSRF
+  const parsedUrl = validateUrl(streamUrl);
+  if (!parsedUrl) {
+    return new Response(
+      JSON.stringify({ error: 'Invalid or blocked URL' }),
+      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
   try {
-    // Validate URL
-    let parsedUrl: URL;
-    try {
-      parsedUrl = new URL(streamUrl);
-    } catch {
-      return new Response(
-        JSON.stringify({ error: 'Invalid stream URL' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-      return new Response(
-        JSON.stringify({ error: 'Only HTTP/HTTPS URLs are allowed' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    console.log(`[stream-proxy] Proxying: ${streamUrl.substring(0, 100)}...`);
+    console.log(`[stream-proxy] Proxying: ${hashUrl(streamUrl)}`);
 
     // Pick a random user agent to mimic real players
     const userAgent = USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
@@ -82,7 +136,7 @@ serve(async (req: Request) => {
     let response: Response;
     try {
       response = await fetch(streamUrl, {
-        method: 'GET',
+        method: req.method === 'HEAD' ? 'HEAD' : 'GET',
         headers,
         signal: controller.signal,
         redirect: 'follow',
@@ -92,12 +146,9 @@ serve(async (req: Request) => {
     }
 
     // Handle various response codes
-    // Some IPTV providers use non-standard codes
     const isSuccess = response.ok || response.status === 206;
-    const isRedirect = [301, 302, 303, 307, 308].includes(response.status);
     
-    // Some providers return 456 or other codes - try to still use the body if present
-    if (!isSuccess && !isRedirect) {
+    if (!isSuccess) {
       // Check if there's actually content despite the error code
       const contentLength = response.headers.get('content-length');
       const hasContent = contentLength && parseInt(contentLength) > 0;
@@ -106,14 +157,13 @@ serve(async (req: Request) => {
         console.error(`[stream-proxy] Upstream error: ${response.status}`);
         
         // Try alternative user agent
-        const altUserAgent = 'IPTV Smarters Pro';
         console.log(`[stream-proxy] Retrying with alternate user agent...`);
         
         const retryResponse = await fetch(streamUrl, {
-          method: 'GET',
+          method: req.method === 'HEAD' ? 'HEAD' : 'GET',
           headers: {
             ...headers,
-            'User-Agent': altUserAgent,
+            'User-Agent': 'IPTV Smarters Pro',
           },
           redirect: 'follow',
         });
@@ -131,13 +181,13 @@ serve(async (req: Request) => {
         
         response = retryResponse;
       }
-      // If there's content despite error code, proceed anyway
     }
 
     // Get content type from response
     const contentType = response.headers.get('content-type') || 'application/octet-stream';
     const contentLength = response.headers.get('content-length');
     const contentRange = response.headers.get('content-range');
+    const acceptRanges = response.headers.get('accept-ranges');
 
     // Build response headers
     const responseHeaders: Record<string, string> = {
@@ -152,14 +202,35 @@ serve(async (req: Request) => {
     if (contentRange) {
       responseHeaders['Content-Range'] = contentRange;
     }
+    if (acceptRanges) {
+      responseHeaders['Accept-Ranges'] = acceptRanges;
+    }
 
-    // Handle different content types
+    // Detect content type
     const lowerContentType = contentType.toLowerCase();
+    const lowerUrl = streamUrl.toLowerCase();
     
+    // Check if this is an HLS manifest
+    const isM3u8 = 
+      lowerContentType.includes('mpegurl') || 
+      lowerContentType.includes('m3u') ||
+      lowerUrl.includes('.m3u8') ||
+      lowerUrl.endsWith('.m3u');
+
     // For HLS manifests, we need to rewrite URLs
-    if (lowerContentType.includes('mpegurl') || lowerContentType.includes('m3u') || streamUrl.includes('.m3u8')) {
-      const text = await response.text();
-      const rewrittenContent = rewriteM3U8Urls(text, streamUrl, url.origin);
+    if (isM3u8) {
+      let text = await response.text();
+      
+      // Handle potential gzip
+      if (!text || text.length === 0) {
+        console.warn('[stream-proxy] Empty M3U8 response');
+        return new Response(
+          JSON.stringify({ error: 'Empty playlist received' }),
+          { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      const rewrittenContent = rewriteM3U8Urls(text, streamUrl, proxyOrigin);
       
       return new Response(rewrittenContent, {
         status: response.status === 206 ? 206 : 200,
@@ -198,6 +269,7 @@ serve(async (req: Request) => {
 
 /**
  * Rewrites URLs in M3U8 content to go through the proxy
+ * Handles: segments, variant playlists, EXT-X-KEY, EXT-X-MAP, EXT-X-I-FRAME-STREAM-INF
  */
 function rewriteM3U8Urls(content: string, originalUrl: string, proxyOrigin: string): string {
   const baseUrl = new URL(originalUrl);
@@ -207,16 +279,33 @@ function rewriteM3U8Urls(content: string, originalUrl: string, proxyOrigin: stri
   const rewrittenLines = lines.map(line => {
     const trimmedLine = line.trim();
     
-    // Skip empty lines and comments (except URI in EXT-X-KEY)
-    if (!trimmedLine || (trimmedLine.startsWith('#') && !trimmedLine.includes('URI='))) {
-      // Handle URI= in EXT-X-KEY tags
-      if (trimmedLine.includes('URI="')) {
-        return rewriteUriInLine(trimmedLine, baseUrl, proxyBase);
-      }
+    // Skip empty lines
+    if (!trimmedLine) {
       return line;
     }
     
-    // Handle actual URLs (not comments)
+    // Handle tags with URI= attribute
+    if (trimmedLine.includes('URI=')) {
+      return rewriteUriInLine(trimmedLine, baseUrl, proxyBase);
+    }
+    
+    // Handle EXT-X-MAP with URI
+    if (trimmedLine.startsWith('#EXT-X-MAP:')) {
+      return rewriteUriInLine(trimmedLine, baseUrl, proxyBase);
+    }
+    
+    // Handle EXT-X-I-FRAME-STREAM-INF with URI
+    if (trimmedLine.startsWith('#EXT-X-I-FRAME-STREAM-INF:')) {
+      return rewriteUriInLine(trimmedLine, baseUrl, proxyBase);
+    }
+    
+    // Handle EXT-X-STREAM-INF (next line is the URL)
+    // We don't modify the tag itself, just let the URL line be handled below
+    if (trimmedLine.startsWith('#EXT-X-STREAM-INF:')) {
+      return line;
+    }
+    
+    // Handle actual URLs (not comments/tags)
     if (!trimmedLine.startsWith('#')) {
       const absoluteUrl = resolveUrl(trimmedLine, baseUrl);
       return proxyBase + encodeURIComponent(absoluteUrl);
@@ -229,10 +318,16 @@ function rewriteM3U8Urls(content: string, originalUrl: string, proxyOrigin: stri
 }
 
 /**
- * Rewrites URI= attributes in lines like EXT-X-KEY
+ * Rewrites URI= attributes in lines like EXT-X-KEY, EXT-X-MAP
  */
 function rewriteUriInLine(line: string, baseUrl: URL, proxyBase: string): string {
-  return line.replace(/URI="([^"]+)"/g, (_match, uri) => {
+  // Handle both URI="..." and URI=...
+  return line.replace(/URI="([^"]+)"/gi, (_match, uri) => {
+    const absoluteUrl = resolveUrl(uri, baseUrl);
+    return `URI="${proxyBase}${encodeURIComponent(absoluteUrl)}"`;
+  }).replace(/URI=([^,\s"]+)/gi, (_match, uri) => {
+    // Handle unquoted URIs
+    if (uri.startsWith('"')) return _match; // Already handled above
     const absoluteUrl = resolveUrl(uri, baseUrl);
     return `URI="${proxyBase}${encodeURIComponent(absoluteUrl)}"`;
   });
