@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import Hls from "hls.js";
 import {
   Play,
@@ -19,6 +20,8 @@ import {
   FastForward,
   PictureInPicture2,
   Grid2X2,
+  Settings,
+  Copy,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -29,6 +32,7 @@ import { usePip } from "@/services/PipService";
 import { useMultiScreen } from "@/contexts/MultiScreenContext";
 import { QualitySelector, QualityLevel } from "./QualitySelector";
 import { localStore } from "@/data/stores/localStore";
+import { toast } from "sonner";
 
 interface VideoPlayerProps {
   channel: Channel | null;
@@ -40,6 +44,7 @@ interface VideoPlayerProps {
 }
 
 export function VideoPlayer({ channel, onPrevious, onNext, onOpenCatchup, onOpenMultiScreen, className }: VideoPlayerProps) {
+  const navigate = useNavigate();
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const hlsRef = useRef<Hls | null>(null);
@@ -541,20 +546,19 @@ export function VideoPlayer({ channel, onPrevious, onNext, onOpenCatchup, onOpen
       {/* Error Overlay */}
       {error && (
         <div className="absolute inset-0 flex items-center justify-center bg-player-bg/80">
-          <div className="text-center max-w-md px-4">
-            <AlertCircle className="w-12 h-12 text-destructive mx-auto mb-2" />
+          <div className="text-center max-w-lg px-4">
+            <AlertCircle className="w-12 h-12 text-destructive mx-auto mb-3" />
             <p className="text-sm text-muted-foreground mb-4">{error}</p>
-            <div className="flex flex-col sm:flex-row gap-2 justify-center">
+            
+            <div className="flex flex-wrap gap-2 justify-center mb-4">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => {
                   setError(null);
                   setIsBuffering(true);
-                  // Re-trigger the effect by forcing a re-render
                   if (videoRef.current && channel?.streamUrl) {
                     destroyHls();
-                    // Small delay then retry
                     setTimeout(() => {
                       if (channel) {
                         videoRef.current!.src = channel.streamUrl;
@@ -566,26 +570,47 @@ export function VideoPlayer({ channel, onPrevious, onNext, onOpenCatchup, onOpen
               >
                 Retry
               </Button>
+              
               {channel?.streamUrl && (
                 <Button
                   variant="secondary"
                   size="sm"
                   onClick={() => {
-                    // Copy stream URL to clipboard
                     navigator.clipboard.writeText(channel.streamUrl).then(() => {
-                      alert('Stream URL copied! Open in VLC or your preferred media player.');
+                      toast.success('Stream URL copied! Open in VLC or your preferred media player.');
                     });
                   }}
                 >
+                  <Copy className="w-3.5 h-3.5 mr-1.5" />
                   Copy URL for VLC
                 </Button>
               )}
+              
+              {channel?.streamUrl.startsWith('http://') && window.location.protocol === 'https:' && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => navigate('/settings')}
+                >
+                  <Settings className="w-3.5 h-3.5 mr-1.5" />
+                  Configure Proxy
+                </Button>
+              )}
             </div>
+            
             {channel?.streamUrl.startsWith('http://') && window.location.protocol === 'https:' && (
-              <p className="text-xs text-muted-foreground mt-4 opacity-70">
-                Tip: HTTP streams may be blocked by your browser on secure pages. 
-                Try opening the URL in VLC or another media player.
-              </p>
+              <div className="text-xs text-muted-foreground space-y-2 bg-muted/30 rounded-lg p-3">
+                <p className="font-medium text-foreground/80">Why can't I watch?</p>
+                <p>
+                  Your browser blocks HTTP streams on secure (HTTPS) pages for security reasons.
+                </p>
+                <p className="text-left">
+                  <strong>Solutions:</strong><br/>
+                  • Copy the URL and open it in VLC, Kodi, or another media player<br/>
+                  • Configure a custom CORS proxy in Settings → Media Player<br/>
+                  • Some IPTV providers also block streams from different IP addresses
+                </p>
+              </div>
             )}
           </div>
         </div>

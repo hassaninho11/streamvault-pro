@@ -254,7 +254,7 @@ export default function LiveTVPage() {
         </div>
 
         {/* Channel List Sidebar - Using Virtualized for 7000+ channels */}
-        <div className="w-full lg:w-80 xl:w-96 border-t lg:border-t-0 lg:border-l border-border bg-card/30">
+        <div className="w-full lg:w-[28rem] xl:w-[36rem] border-t lg:border-t-0 lg:border-l border-border bg-card/30">
           <VirtualizedChannelList
             channels={channels}
             selectedChannel={selectedChannel || undefined}
