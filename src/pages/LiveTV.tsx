@@ -1,9 +1,9 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useMemo, useCallback, useEffect } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { Loader2, Tv } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { VideoPlayer } from "@/components/player/VideoPlayer";
-import { ChannelList } from "@/components/channels/ChannelList";
+import { VirtualizedChannelList } from "@/components/channels/VirtualizedChannelList";
 import { TVLayout } from "@/components/tv/TVLayout";
 import { TVChannelList } from "@/components/tv/TVChannelList";
 import { TVNowNextPanel } from "@/components/tv/TVNowNextPanel";
@@ -46,7 +46,8 @@ export default function LiveTVPage() {
   const toggleFavorite = useChannelStore((state) => state.toggleFavorite);
   const nowNextMap = useChannelStore((state) => state.nowNextMap);
 
-  // Convert store channels to UI channels
+  // Memoize channels - only recompute when index/favoriteIds change, NOT on every render
+  // For performance with 7000+ channels, we pass this to VirtualizedChannelList
   const channels: Channel[] = useMemo(() => {
     if (!index) return [];
     return filteredIds.map(id => {
@@ -217,9 +218,9 @@ export default function LiveTVPage() {
           />
         </div>
 
-        {/* Channel List Sidebar */}
+        {/* Channel List Sidebar - Using Virtualized for 7000+ channels */}
         <div className="w-full lg:w-80 xl:w-96 border-t lg:border-t-0 lg:border-l border-border bg-card/30">
-          <ChannelList
+          <VirtualizedChannelList
             channels={channels}
             selectedChannel={selectedChannel || undefined}
             onSelectChannel={handleSelectChannel}
