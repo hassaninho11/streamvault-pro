@@ -3,17 +3,23 @@
  * Uses Web Workers for parsing to keep UI responsive
  * Uses edge function proxy to avoid CORS issues
  * Implements IndexedDB caching for fast app restarts
+ * Now separates VOD (movies/series) from live channels
  */
 
-import { workerManager } from '@/workers/workerManager';
+import { workerManager, type ExtendedParsePlaylistResponse } from '@/workers/workerManager';
 import { useChannelStore } from '@/data/stores/channelStore';
+import { useVodStore } from '@/data/stores/vodStore';
 import { supabase } from '@/integrations/supabase/client';
 import { cacheManager } from '@/data/cache/cacheManager';
 import type { CoreChannel, ChannelIndex } from '@/core/types';
+import type { DetectedContent } from '@/core/parser/vodDetector';
+import type { Movie, Series, Season, Episode } from '@/types/vod';
 
 export interface PlaylistLoadResult {
   success: boolean;
   channelCount: number;
+  movieCount: number;
+  seriesCount: number;
   groups: string[];
   fromCache?: boolean;
   error?: string;
@@ -64,6 +70,8 @@ class PlaylistService {
         return {
           success: true,
           channelCount: cached.channels.length,
+          movieCount: 0,
+          seriesCount: 0,
           groups: index.groups,
           fromCache: true,
         };
@@ -179,7 +187,7 @@ class PlaylistService {
         }
       }, 150);
 
-      // Parse in worker
+      // Parse in worker - now returns categorized content
       const { response: parseResult, timing } = await workerManager.parsePlaylist(content!, providerId);
       
       clearInterval(parseProgressInterval);
@@ -189,6 +197,15 @@ class PlaylistService {
 
       // Reconstruct the index from serialized data
       const index = this.reconstructIndex(parseResult.channels, parseResult.index);
+      
+      useChannelStore.getState().setParseProgress(75);
+
+      // Convert and store VOD content
+      const { movieCount, seriesCount } = this.storeVodContent(
+        parseResult.movies,
+        parseResult.series,
+        providerId
+      );
       
       useChannelStore.getState().setParseProgress(80);
       
@@ -213,10 +230,13 @@ class PlaylistService {
       // Cache the parsed channels for this provider
       await cacheManager.setCachedChannels(providerId, parseResult.channels, contentHash);
       console.log(`[PlaylistService] Cached ${parseResult.channels.length} channels for provider ${providerId}`);
+      console.log(`[PlaylistService] Stored ${movieCount} movies and ${seriesCount} series`);
 
       return {
         success: true,
         channelCount: parseResult.channels.length,
+        movieCount,
+        seriesCount,
         groups: parseResult.index.groups,
         fromCache: false,
         timing: {
@@ -232,10 +252,163 @@ class PlaylistService {
       return {
         success: false,
         channelCount: 0,
+        movieCount: 0,
+        seriesCount: 0,
         groups: [],
         error: error instanceof Error ? error.message : 'Unknown error',
       };
     }
+  }
+
+  /**
+   * Convert detected VOD items and store in vodStore
+   */
+  private storeVodContent(
+    movieItems: DetectedContent[],
+    seriesItems: DetectedContent[],
+    providerId: string
+  ): { movieCount: number; seriesCount: number } {
+    const now = new Date();
+    
+    // Convert movies
+    const movies: Movie[] = movieItems.map((detected, index) => ({
+      id: `${providerId}-movie-${index}`,
+      providerId,
+      type: 'movie' as const,
+      title: this.cleanVodTitle(detected.item.name),
+      year: detected.year,
+      genres: [detected.item.group],
+      posterUrl: detected.item.logo,
+      streamUrl: detected.item.url,
+      metadataSource: 'provider' as const,
+      subtitlesAvailable: false,
+      audioLanguages: [],
+      addedAt: now,
+      updatedAt: now,
+    }));
+    
+    // Group series items by series title
+    const seriesMap = new Map<string, DetectedContent[]>();
+    for (const item of seriesItems) {
+      const seriesTitle = item.seriesTitle || this.extractSeriesTitle(item.item.name);
+      const existing = seriesMap.get(seriesTitle) || [];
+      existing.push(item);
+      seriesMap.set(seriesTitle, existing);
+    }
+    
+    // Convert series with episodes
+    const series: Series[] = [];
+    let seriesIndex = 0;
+    
+    for (const [seriesTitle, episodes] of seriesMap) {
+      const seriesId = `${providerId}-series-${seriesIndex++}`;
+      
+      // Group episodes by season
+      const seasonMap = new Map<number, DetectedContent[]>();
+      for (const ep of episodes) {
+        const seasonNum = ep.seasonNumber || 1;
+        const existing = seasonMap.get(seasonNum) || [];
+        existing.push(ep);
+        seasonMap.set(seasonNum, existing);
+      }
+      
+      // Build seasons with episodes
+      const seasons: Season[] = [];
+      for (const [seasonNum, seasonEps] of seasonMap) {
+        const episodesList: Episode[] = seasonEps.map((ep, epIndex) => ({
+          id: `${seriesId}-s${seasonNum}-e${ep.episodeNumber || epIndex + 1}`,
+          providerId,
+          type: 'episode' as const,
+          title: ep.item.name,
+          seriesId,
+          seasonNumber: seasonNum,
+          episodeNumber: ep.episodeNumber || epIndex + 1,
+          year: ep.year,
+          genres: [ep.item.group],
+          posterUrl: ep.item.logo,
+          streamUrl: ep.item.url,
+          metadataSource: 'provider' as const,
+          subtitlesAvailable: false,
+          audioLanguages: [],
+          addedAt: now,
+          updatedAt: now,
+        }));
+        
+        seasons.push({
+          id: `${seriesId}-s${seasonNum}`,
+          seriesId,
+          seasonNumber: seasonNum,
+          episodes: episodesList.sort((a, b) => a.episodeNumber - b.episodeNumber),
+          episodeCount: episodesList.length,
+        });
+      }
+      
+      // Get first episode for poster
+      const firstEp = episodes[0];
+      
+      series.push({
+        id: seriesId,
+        providerId,
+        type: 'series',
+        title: seriesTitle,
+        year: firstEp.year,
+        genres: [firstEp.item.group],
+        posterUrl: firstEp.item.logo,
+        seasons: seasons.sort((a, b) => a.seasonNumber - b.seasonNumber),
+        totalSeasons: seasons.length,
+        totalEpisodes: episodes.length,
+        metadataSource: 'provider',
+        subtitlesAvailable: false,
+        audioLanguages: [],
+        addedAt: now,
+        updatedAt: now,
+      });
+    }
+    
+    // Store in vodStore
+    if (movies.length > 0) {
+      useVodStore.getState().addMovies(movies);
+    }
+    if (series.length > 0) {
+      useVodStore.getState().addSeries(series);
+    }
+    
+    return { movieCount: movies.length, seriesCount: series.length };
+  }
+  
+  /**
+   * Clean VOD title by removing year, quality tags, etc.
+   */
+  private cleanVodTitle(title: string): string {
+    return title
+      .replace(/[\(\[]?\b(19[5-9]\d|20[0-3]\d)\b[\)\]]?/g, '') // Remove year
+      .replace(/\b(720p|1080p|4k|uhd|hd|sd)\b/gi, '') // Remove quality
+      .replace(/\bS\d{1,2}\s*E\d{1,3}\b/gi, '') // Remove S01E01
+      .replace(/\s*[-–—:]\s*$/g, '') // Remove trailing separators
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+  
+  /**
+   * Extract series title from episode name
+   */
+  private extractSeriesTitle(name: string): string {
+    // Remove common patterns: S01E01, Season 1 Episode 1, etc.
+    let title = name
+      .replace(/\bS\d{1,2}\s*E\d{1,3}\b/gi, '')
+      .replace(/\b(?:Season|Säsong)\s*\d{1,2}/gi, '')
+      .replace(/\b(?:Episode|Avsnitt|Ep)\s*\d{1,3}/gi, '')
+      .replace(/[\(\[]?\b(19[5-9]\d|20[0-3]\d)\b[\)\]]?/g, '') // Remove year
+      .replace(/\s*[-–—:]\s*$/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    
+    // If we removed everything, use original
+    if (!title || title.length < 2) {
+      title = name;
+    }
+    
+    return title;
   }
 
   /**
