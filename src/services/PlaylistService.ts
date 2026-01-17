@@ -93,14 +93,24 @@ class PlaylistService {
     }
     
     try {
-      // Set loading state
+      // Set loading state - Stage 1: Fetching (0-30%)
       useChannelStore.getState().setLoading(true);
-      useChannelStore.getState().setParseProgress(10);
+      useChannelStore.getState().setParseProgress(5);
+
+      // Simulate progress during fetch
+      const fetchProgressInterval = setInterval(() => {
+        const current = useChannelStore.getState().parseProgress;
+        if (current < 25) {
+          useChannelStore.getState().setParseProgress(current + 2);
+        }
+      }, 200);
 
       // Fetch via edge function proxy to avoid CORS issues
       const { data, error } = await supabase.functions.invoke('playlist-proxy', {
         body: { url, type: 'fetch' }
       });
+      
+      clearInterval(fetchProgressInterval);
 
       if (error) {
         throw new Error(error.message || 'Failed to fetch playlist');
@@ -114,26 +124,47 @@ class PlaylistService {
       const fetchMs = performance.now() - fetchStart;
       const contentHash = generateHash(content.slice(0, 5000)); // Hash first 5KB for speed
       
-      useChannelStore.getState().setParseProgress(40);
+      // Stage 2: Parsing (30-70%)
+      useChannelStore.getState().setParseProgress(30);
+      
+      // Simulate parse progress
+      const parseProgressInterval = setInterval(() => {
+        const current = useChannelStore.getState().parseProgress;
+        if (current < 65) {
+          useChannelStore.getState().setParseProgress(current + 3);
+        }
+      }, 150);
 
       // Parse in worker
       const { response: parseResult, timing } = await workerManager.parsePlaylist(content, providerId);
       
-      useChannelStore.getState().setParseProgress(80);
+      clearInterval(parseProgressInterval);
+      
+      // Stage 3: Indexing (70-95%)
+      useChannelStore.getState().setParseProgress(70);
 
       // Reconstruct the index from serialized data
       const index = this.reconstructIndex(parseResult.channels, parseResult.index);
+      
+      useChannelStore.getState().setParseProgress(80);
       
       // Merge with existing channels from other providers
       const state = useChannelStore.getState();
       const existingChannels = state.channels.filter(c => c.providerId !== providerId);
       const mergedChannels = [...existingChannels, ...parseResult.channels];
       
+      useChannelStore.getState().setParseProgress(85);
+      
       // Rebuild full index with all channels
       const fullIndex = this.buildIndexFromChannels(mergedChannels);
       
+      useChannelStore.getState().setParseProgress(90);
+      
       // Update channel store
       useChannelStore.getState().setChannels(mergedChannels, fullIndex);
+      
+      // Stage 4: Caching (95-100%)
+      useChannelStore.getState().setParseProgress(95);
       
       // Cache the parsed channels for this provider
       await cacheManager.setCachedChannels(providerId, parseResult.channels, contentHash);
