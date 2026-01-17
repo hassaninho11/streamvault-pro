@@ -7,6 +7,15 @@ const corsHeaders = {
   'Access-Control-Expose-Headers': 'Content-Length, Content-Range, Content-Type',
 };
 
+// Common user agents that IPTV providers accept
+const USER_AGENTS = [
+  'VLC/3.0.20 LibVLC/3.0.20',
+  'Lavf/60.3.100',
+  'Kodi/20.2 (Windows NT 10.0; Win64; x64)',
+  'ExoPlayerLib/2.19.1',
+  'libmpv',
+];
+
 serve(async (req: Request) => {
   const url = new URL(req.url);
   
@@ -46,29 +55,83 @@ serve(async (req: Request) => {
 
     console.log(`[stream-proxy] Proxying: ${streamUrl.substring(0, 100)}...`);
 
-    // Forward range header for seeking support
+    // Pick a random user agent to mimic real players
+    const userAgent = USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
+    
+    // Build headers that mimic a real media player
     const headers: Record<string, string> = {
-      'User-Agent': 'StreamVault/1.0 (IPTV Client)',
+      'User-Agent': userAgent,
       'Accept': '*/*',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept-Encoding': 'identity', // Don't request compressed for streams
+      'Connection': 'keep-alive',
+      'Referer': `${parsedUrl.protocol}//${parsedUrl.host}/`,
+      'Origin': `${parsedUrl.protocol}//${parsedUrl.host}`,
     };
 
+    // Forward range header for seeking support
     const rangeHeader = req.headers.get('range');
     if (rangeHeader) {
       headers['Range'] = rangeHeader;
     }
 
-    // Fetch the stream
-    const response = await fetch(streamUrl, {
-      method: 'GET',
-      headers,
-    });
+    // Fetch the stream with timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    
+    let response: Response;
+    try {
+      response = await fetch(streamUrl, {
+        method: 'GET',
+        headers,
+        signal: controller.signal,
+        redirect: 'follow',
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
-    if (!response.ok && response.status !== 206) {
-      console.error(`[stream-proxy] Upstream error: ${response.status}`);
-      return new Response(
-        JSON.stringify({ error: `Stream server returned ${response.status}` }),
-        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    // Handle various response codes
+    // Some IPTV providers use non-standard codes
+    const isSuccess = response.ok || response.status === 206;
+    const isRedirect = [301, 302, 303, 307, 308].includes(response.status);
+    
+    // Some providers return 456 or other codes - try to still use the body if present
+    if (!isSuccess && !isRedirect) {
+      // Check if there's actually content despite the error code
+      const contentLength = response.headers.get('content-length');
+      const hasContent = contentLength && parseInt(contentLength) > 0;
+      
+      if (!hasContent) {
+        console.error(`[stream-proxy] Upstream error: ${response.status}`);
+        
+        // Try alternative user agent
+        const altUserAgent = 'IPTV Smarters Pro';
+        console.log(`[stream-proxy] Retrying with alternate user agent...`);
+        
+        const retryResponse = await fetch(streamUrl, {
+          method: 'GET',
+          headers: {
+            ...headers,
+            'User-Agent': altUserAgent,
+          },
+          redirect: 'follow',
+        });
+        
+        if (!retryResponse.ok && retryResponse.status !== 206) {
+          console.error(`[stream-proxy] Retry also failed: ${retryResponse.status}`);
+          return new Response(
+            JSON.stringify({ 
+              error: `Stream server returned ${response.status}`,
+              hint: 'The stream provider may be blocking proxy requests or the stream may be unavailable.'
+            }),
+            { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        
+        response = retryResponse;
+      }
+      // If there's content despite error code, proceed anyway
     }
 
     // Get content type from response
@@ -99,7 +162,7 @@ serve(async (req: Request) => {
       const rewrittenContent = rewriteM3U8Urls(text, streamUrl, url.origin);
       
       return new Response(rewrittenContent, {
-        status: response.status,
+        status: response.status === 206 ? 206 : 200,
         headers: {
           ...responseHeaders,
           'Content-Type': 'application/vnd.apple.mpegurl',
@@ -110,13 +173,21 @@ serve(async (req: Request) => {
 
     // For binary content (TS segments, etc), stream directly
     return new Response(response.body, {
-      status: response.status,
+      status: response.status === 206 ? 206 : 200,
       headers: responseHeaders,
     });
 
   } catch (error) {
     console.error('[stream-proxy] Error:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    
+    // Check for abort/timeout
+    if (error instanceof Error && error.name === 'AbortError') {
+      return new Response(
+        JSON.stringify({ error: 'Stream request timed out' }),
+        { status: 504, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
     
     return new Response(
       JSON.stringify({ error: errorMessage }),
