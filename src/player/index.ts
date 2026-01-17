@@ -36,3 +36,26 @@ export {
   type CastDevice,
   type CastControllerEvents,
 } from './CastController';
+
+// Playback Strategy
+export {
+  performPreflight,
+  detectPlatform,
+  getStrategyLabel,
+  getStrategyIcon,
+  type Platform,
+  type PlaybackStrategy,
+  type PreflightResult,
+  type PreflightOptions,
+} from './PlaybackPreflight';
+
+export {
+  executeStrategy,
+  resolvePlayback,
+  buildProxyUrl,
+  copyStreamUrl,
+  generateVlcLink,
+  startCasting,
+  type StrategyContext,
+  type StrategyResult,
+} from './PlaybackStrategyResolver';

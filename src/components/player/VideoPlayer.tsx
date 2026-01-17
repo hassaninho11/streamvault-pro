@@ -22,6 +22,7 @@ import {
   Grid2X2,
   Settings,
   Copy,
+  Shield,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -31,8 +32,15 @@ import { useCatchup } from "@/services/CatchupService";
 import { usePip } from "@/services/PipService";
 import { useMultiScreen } from "@/contexts/MultiScreenContext";
 import { QualitySelector, QualityLevel } from "./QualitySelector";
+import { PlaybackBlockedScreen } from "./PlaybackBlockedScreen";
 import { localStore } from "@/data/stores/localStore";
 import { toast } from "sonner";
+import {
+  performPreflight,
+  PreflightResult,
+  PlaybackStrategy,
+} from "@/player/PlaybackPreflight";
+import { getCastController } from "@/player/CastController";
 
 interface VideoPlayerProps {
   channel: Channel | null;
@@ -60,6 +68,11 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
   const [showControls, setShowControls] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout>();
+  
+  // Playback blocked state for smart fallback UI
+  const [showBlockedScreen, setShowBlockedScreen] = useState(false);
+  const [preflightResult, setPreflightResult] = useState<PreflightResult | null>(null);
+  const [isUsingProxy, setIsUsingProxy] = useState(false);
   
   // Quality levels state
   const [qualityLevels, setQualityLevels] = useState<QualityLevel[]>([]);
@@ -128,10 +141,29 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
       return;
     }
     
+    // Reset states
     setError(null);
     setIsBuffering(true);
+    setShowBlockedScreen(false);
+    setIsUsingProxy(false);
     destroyHls();
     setQualityLevels([]);
+    
+    // Perform preflight check
+    const castController = getCastController();
+    const preflight = performPreflight({
+      streamUrl: originalUrl,
+      sourceType: directStreamUrl ? 'vod' : 'live',
+      hasChromecast: castController.isChromecastAvailable(),
+      hasAirPlay: castController.isAirPlayAvailable(),
+    });
+    
+    setPreflightResult(preflight);
+    
+    // Log diagnostic code
+    if (preflight.diagnosticCode) {
+      console.log(`[VideoPlayer] Preflight diagnostic: ${preflight.diagnosticCode}`);
+    }
     
     // Check if this is an HTTP stream on an HTTPS page
     const isHttpStream = originalUrl.startsWith('http://');
@@ -155,11 +187,14 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
                   isXtreamStyle;
     
     const showFinalError = () => {
-      if (isHttpStream && isSecurePage) {
-        setError("Cannot play HTTP streams on this secure page. Your IPTV provider may also restrict playback to your home IP address. Try a different channel or contact your provider.");
-      } else {
-        setError("Unable to play this stream. The server may be unavailable.");
+      // If mixed content blocked, show smart fallback UI instead of error
+      if (preflight.isMixedContentBlocked) {
+        setIsBuffering(false);
+        setShowBlockedScreen(true);
+        return;
       }
+      
+      setError("Unable to play this stream. The server may be unavailable.");
       setIsBuffering(false);
     };
     
@@ -308,6 +343,7 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
         const proxyUrl = buildProxyUrl(originalUrl);
         if (proxyUrl) {
           urlsToTry.push(proxyUrl);
+          setIsUsingProxy(true);
           
           if (isXtreamStyle && originalUrl.endsWith('.m3u8')) {
             const withoutExt = originalUrl.replace('.m3u8', '');
@@ -358,6 +394,64 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
     return () => {
       destroyHls();
     };
+  }, [channel, directStreamUrl, destroyHls]);
+
+  // Handle strategy selection from blocked screen
+  const handleStrategySelect = useCallback((strategy: PlaybackStrategy, resolvedUrl?: string) => {
+    setShowBlockedScreen(false);
+    
+    if (strategy === 'proxy_https' && resolvedUrl) {
+      // Restart playback with proxy URL
+      setIsUsingProxy(true);
+      setIsBuffering(true);
+      
+      const video = videoRef.current;
+      if (!video) return;
+      
+      destroyHls();
+      
+      // Determine if HLS
+      const streamUrl = directStreamUrl || channel?.streamUrl || '';
+      const isHls = streamUrl.toLowerCase().includes('.m3u8') || 
+                    /\/live\/[^/]+\/[^/]+\/\d+/.test(streamUrl);
+      
+      if (isHls && Hls.isSupported()) {
+        const hls = new Hls({
+          enableWorker: true,
+          lowLatencyMode: true,
+          backBufferLength: 90,
+          maxBufferLength: 30,
+        });
+        hlsRef.current = hls;
+        
+        hls.loadSource(resolvedUrl);
+        hls.attachMedia(video);
+        
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          video.play().catch((e) => {
+            console.warn('[VideoPlayer] Proxy autoplay blocked:', e);
+            setIsBuffering(false);
+          });
+        });
+        
+        hls.on(Hls.Events.ERROR, (_event, data) => {
+          if (data.fatal) {
+            console.error('[VideoPlayer] Proxy HLS error:', data);
+            setError("Proxy stream failed. Try another option.");
+            setIsBuffering(false);
+          }
+        });
+      } else {
+        video.src = resolvedUrl;
+        video.load();
+        video.play().catch((e) => {
+          console.warn('[VideoPlayer] Proxy play failed:', e);
+        });
+      }
+    } else if (strategy === 'cast_chromecast') {
+      // Casting is handled by the blocked screen
+      toast.success('Casting startat');
+    }
   }, [channel, directStreamUrl, destroyHls]);
 
   const handleMouseMove = () => {
@@ -497,7 +591,28 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
     return ((state.playbackPosition - state.bufferStart) / range) * 100;
   };
 
-  if (!channel) {
+  // Show blocked screen when mixed content is detected
+  if (showBlockedScreen && preflightResult) {
+    const streamUrl = directStreamUrl || channel?.streamUrl || '';
+    return (
+      <div className={cn("bg-player-bg rounded-xl aspect-video", className)}>
+        <PlaybackBlockedScreen
+          preflight={preflightResult}
+          context={{
+            streamUrl,
+            title: vodTitle || channel?.name,
+            posterUrl: channel?.logoUrl,
+            sourceType: directStreamUrl ? 'vod' : 'live',
+          }}
+          onStrategySelect={handleStrategySelect}
+          onCancel={() => setShowBlockedScreen(false)}
+          className="h-full"
+        />
+      </div>
+    );
+  }
+
+  if (!channel && !directStreamUrl) {
     return (
       <div
         className={cn(

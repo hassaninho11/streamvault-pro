@@ -50,6 +50,7 @@ export interface LocalSettings {
     defaultQuality: 'auto' | 'high' | 'medium' | 'low';
     bufferSize: number;
     customProxyUrl?: string; // Custom stream proxy URL
+    httpStreamStrategy?: 'auto' | 'proxy_https' | 'cast_chromecast' | 'external_player'; // Remember choice for HTTP streams
   };
   selectedProfileId?: string;
   updatedAt: number;
