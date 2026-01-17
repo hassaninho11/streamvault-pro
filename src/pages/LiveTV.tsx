@@ -1,16 +1,18 @@
 import { useMemo, useCallback, useEffect, useRef } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { Loader2, Tv } from "lucide-react";
+import { Loader2, Tv, Search } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { VideoPlayer } from "@/components/player/VideoPlayer";
 import { VirtualizedChannelList } from "@/components/channels/VirtualizedChannelList";
 import { TVLayout } from "@/components/tv/TVLayout";
 import { TVChannelList } from "@/components/tv/TVChannelList";
 import { TVNowNextPanel } from "@/components/tv/TVNowNextPanel";
+import { ChannelSearchCommand } from "@/components/channels/ChannelSearchCommand";
 import { useTVMode } from "@/contexts/TVModeContext";
 import { useChannelLoader } from "@/hooks/useChannelLoader";
 import { useChannelStore, useFilteredChannelIds } from "@/data/stores/channelStore";
 import { useRecentlyWatched } from "@/hooks/useRecentlyWatched";
+import { useChannelSearch } from "@/hooks/useChannelSearch";
 import { Button } from "@/components/ui/button";
 import { Channel, EpgProgram } from "@/types/iptv";
 import type { CoreChannel } from "@/core/types";
@@ -38,6 +40,7 @@ export default function LiveTVPage() {
   const { isTVMode } = useTVMode();
   const channelId = searchParams.get("channel");
   const { addToRecentlyWatched } = useRecentlyWatched();
+  const { isOpen: isSearchOpen, setIsOpen: setSearchOpen } = useChannelSearch();
 
   const { isLoading, channelCount } = useChannelLoader();
   const filteredIds = useFilteredChannelIds();
@@ -167,6 +170,7 @@ export default function LiveTVPage() {
   if (isTVMode) {
     return (
       <TVLayout>
+        <ChannelSearchCommand open={isSearchOpen} onOpenChange={setSearchOpen} />
         <div className="flex h-full">
           {/* Channel List - Left */}
           <div className="w-80 flex-shrink-0 border-r border-border bg-card/30">
@@ -224,9 +228,23 @@ export default function LiveTVPage() {
   // Standard Desktop/Mobile Layout
   return (
     <AppLayout>
+      <ChannelSearchCommand open={isSearchOpen} onOpenChange={setSearchOpen} />
       <div className="flex flex-col lg:flex-row h-[calc(100vh-3.5rem)] lg:h-screen">
         {/* Player Section */}
         <div className="flex-1 p-4 lg:p-6 flex flex-col">
+          {/* Search hint */}
+          <div className="mb-2 flex justify-end">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs text-muted-foreground gap-2"
+              onClick={() => setSearchOpen(true)}
+            >
+              <Search className="w-3 h-3" />
+              <span>Search</span>
+              <kbd className="ml-1 px-1.5 py-0.5 bg-muted rounded text-[10px] font-mono">⌘K</kbd>
+            </Button>
+          </div>
           <VideoPlayer
             channel={selectedChannel}
             onPrevious={currentIndex > 0 ? handlePrevious : undefined}
