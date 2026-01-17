@@ -178,7 +178,7 @@ export const VirtualizedChannelList: React.FC<VirtualizedChannelListProps> = ({
       <div className="flex flex-1 min-h-0">
         {/* Groups */}
         {uniqueGroups.length > 1 && (
-          <ScrollArea className="w-32 border-r border-border flex-shrink-0">
+          <ScrollArea className="w-44 xl:w-52 border-r border-border flex-shrink-0">
             <div className="p-2 space-y-1">
               <Button
                 variant={selectedGroup === null ? "secondary" : "ghost"}
@@ -193,10 +193,12 @@ export const VirtualizedChannelList: React.FC<VirtualizedChannelListProps> = ({
                   key={group.name}
                   variant={selectedGroup === group.name ? "secondary" : "ghost"}
                   size="sm"
-                  className="w-full justify-start text-xs truncate"
+                  className="w-full justify-start text-xs"
                   onClick={() => handleGroupClick(group.name)}
+                  title={group.name}
                 >
-                  {group.name} ({group.count})
+                  <span className="truncate flex-1 text-left">{group.name}</span>
+                  <span className="text-muted-foreground ml-1 flex-shrink-0">({group.count})</span>
                 </Button>
               ))}
             </div>
