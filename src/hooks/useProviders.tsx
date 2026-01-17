@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { localStore, LocalProvider } from "@/data/stores/localStore";
+import { playlistService } from "@/services/PlaylistService";
 import { toast } from "sonner";
 
 export interface DbProvider {
@@ -126,25 +127,32 @@ export function useProviders() {
 
   const addProvider = async (data: CreateProviderData): Promise<boolean> => {
     try {
+      let providerId: string;
+
       if (user) {
         // Logged in: save to Supabase
-        const { error: insertError } = await supabase.from("providers").insert({
-          user_id: user.id,
-          name: data.name,
-          type: data.type,
-          m3u_url: data.m3u_url || null,
-          xtream_host: data.xtream_host || null,
-          xtream_user: data.xtream_user || null,
-          xtream_pass_encrypted: data.xtream_pass || null,
-          epg_url: data.epg_url || null,
-          is_active: true,
-          channel_count: 0,
-        });
+        const { data: insertedData, error: insertError } = await supabase
+          .from("providers")
+          .insert({
+            user_id: user.id,
+            name: data.name,
+            type: data.type,
+            m3u_url: data.m3u_url || null,
+            xtream_host: data.xtream_host || null,
+            xtream_user: data.xtream_user || null,
+            xtream_pass_encrypted: data.xtream_pass || null,
+            epg_url: data.epg_url || null,
+            is_active: true,
+            channel_count: 0,
+          })
+          .select('id')
+          .single();
 
         if (insertError) throw insertError;
+        providerId = insertedData.id;
       } else {
         // Guest mode: save to local storage
-        await localStore.saveProvider({
+        const savedProvider = await localStore.saveProvider({
           name: data.name,
           type: data.type,
           m3uUrl: data.m3u_url,
@@ -155,13 +163,42 @@ export function useProviders() {
           isActive: true,
           channelCount: 0,
         });
+        providerId = savedProvider.id;
+      }
+
+      // Now load and parse the playlist
+      toast.loading("Loading channels...", { id: "loading-channels" });
+      
+      let result;
+      if (data.type === 'xtream' && data.xtream_host && data.xtream_user && data.xtream_pass) {
+        result = await playlistService.loadXtreamPlaylist(
+          data.xtream_host,
+          data.xtream_user,
+          data.xtream_pass,
+          providerId
+        );
+      } else if (data.m3u_url) {
+        result = await playlistService.loadM3UPlaylist(data.m3u_url, providerId);
+      }
+
+      toast.dismiss("loading-channels");
+
+      if (result?.success) {
+        // Update channel count
+        await updateProvider(providerId, { 
+          channel_count: result.channelCount,
+          last_sync: new Date().toISOString(),
+        });
+        toast.success(`Provider added with ${result.channelCount} channels!`);
+      } else if (result) {
+        toast.error(`Failed to load channels: ${result.error}`);
       }
 
       await fetchProviders();
-      toast.success("Provider added successfully!");
       return true;
     } catch (err) {
       console.error("Error adding provider:", err);
+      toast.dismiss("loading-channels");
       toast.error("Failed to add provider");
       return false;
     }
@@ -236,7 +273,52 @@ export function useProviders() {
   };
 
   const refreshProvider = async (id: string): Promise<boolean> => {
-    return updateProvider(id, { last_sync: new Date().toISOString() });
+    // Find the provider to get its URL/credentials
+    const provider = providers.find(p => p.id === id);
+    if (!provider) {
+      toast.error("Provider not found");
+      return false;
+    }
+
+    toast.loading("Refreshing channels...", { id: "refresh-channels" });
+
+    try {
+      let result;
+      
+      if (provider.type === 'xtream' && provider.xtream_host && provider.xtream_user && provider.xtream_pass_encrypted) {
+        result = await playlistService.loadXtreamPlaylist(
+          provider.xtream_host,
+          provider.xtream_user,
+          provider.xtream_pass_encrypted, // Note: in production, decrypt this first
+          id
+        );
+      } else if (provider.m3u_url) {
+        result = await playlistService.loadM3UPlaylist(provider.m3u_url, id);
+      } else {
+        toast.dismiss("refresh-channels");
+        toast.error("No playlist URL configured");
+        return false;
+      }
+
+      toast.dismiss("refresh-channels");
+
+      if (result?.success) {
+        await updateProvider(id, { 
+          channel_count: result.channelCount,
+          last_sync: new Date().toISOString(),
+        });
+        toast.success(`Refreshed: ${result.channelCount} channels loaded`);
+        return true;
+      } else {
+        toast.error(`Refresh failed: ${result?.error || 'Unknown error'}`);
+        return false;
+      }
+    } catch (err) {
+      toast.dismiss("refresh-channels");
+      toast.error("Failed to refresh provider");
+      console.error("Refresh error:", err);
+      return false;
+    }
   };
 
   return {

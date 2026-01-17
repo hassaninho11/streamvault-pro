@@ -34,11 +34,13 @@ export function AddProviderForm({ onSubmit, onCancel }: AddProviderFormProps) {
   });
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("idle");
   const [errorMessage, setErrorMessage] = useState<string>("");
+  const [successMessage, setSuccessMessage] = useState<string>("");
 
   const updateForm = useCallback((updates: Partial<ProviderFormData>) => {
     setFormData((prev) => ({ ...prev, ...updates }));
     setConnectionStatus("idle");
     setErrorMessage("");
+    setSuccessMessage("");
   }, []);
 
   const handleTabChange = (value: string) => {
@@ -49,28 +51,62 @@ export function AddProviderForm({ onSubmit, onCancel }: AddProviderFormProps) {
   const testConnection = async () => {
     setConnectionStatus("testing");
     setErrorMessage("");
+    setSuccessMessage("");
 
-    // Simulate connection test
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-
-    // For demo, check if URL looks valid
-    if (activeTab === "m3u-url" && formData.m3uUrl) {
-      if (formData.m3uUrl.includes(".m3u") || formData.m3uUrl.includes("get.php")) {
-        setConnectionStatus("success");
+    try {
+      let testUrl = '';
+      
+      if (activeTab === "m3u-url" && formData.m3uUrl) {
+        testUrl = formData.m3uUrl;
+      } else if (activeTab === "xtream" && formData.xtreamHost && formData.xtreamUser && formData.xtreamPass) {
+        const cleanHost = formData.xtreamHost.replace(/\/+$/, '');
+        testUrl = `${cleanHost}/get.php?username=${encodeURIComponent(formData.xtreamUser)}&password=${encodeURIComponent(formData.xtreamPass)}&type=m3u_plus&output=ts`;
       } else {
         setConnectionStatus("error");
-        setErrorMessage("Invalid M3U URL format");
+        setErrorMessage("Please fill in all required fields");
+        return;
       }
-    } else if (activeTab === "xtream" && formData.xtreamHost) {
-      if (formData.xtreamHost.startsWith("http")) {
+
+      // Actually fetch the playlist to verify it works
+      const response = await fetch(testUrl, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/x-mpegURL, audio/mpegurl, audio/x-mpegurl, */*',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server returned ${response.status}`);
+      }
+
+      // Check if response looks like M3U content
+      const contentType = response.headers.get('content-type') || '';
+      const text = await response.text();
+      
+      if (text.includes('#EXTM3U') || text.includes('#EXTINF')) {
+        // Count approximate channels
+        const channelMatches = text.match(/#EXTINF/g);
+        const approxChannels = channelMatches?.length || 0;
         setConnectionStatus("success");
+        setSuccessMessage(approxChannels > 0 ? `Found approximately ${approxChannels} channels` : "Connection successful!");
+      } else if (contentType.includes('mpegurl') || contentType.includes('m3u')) {
+        setConnectionStatus("success");
+        setSuccessMessage("Connection successful!");
       } else {
         setConnectionStatus("error");
-        setErrorMessage("Host must start with http:// or https://");
+        setErrorMessage("Response doesn't appear to be a valid M3U playlist");
       }
-    } else {
+    } catch (error) {
       setConnectionStatus("error");
-      setErrorMessage("Please fill in all required fields");
+      if (error instanceof Error) {
+        if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+          setErrorMessage("Could not connect. Check the URL or try again.");
+        } else {
+          setErrorMessage(error.message);
+        }
+      } else {
+        setErrorMessage("Connection failed");
+      }
     }
   };
 
@@ -255,7 +291,7 @@ export function AddProviderForm({ onSubmit, onCancel }: AddProviderFormProps) {
               {connectionStatus === "success" && (
                 <>
                   <Check className="w-4 h-4" />
-                  <span className="text-sm">Connection successful!</span>
+                  <span className="text-sm">{successMessage || "Connection successful!"}</span>
                 </>
               )}
               {connectionStatus === "error" && (
