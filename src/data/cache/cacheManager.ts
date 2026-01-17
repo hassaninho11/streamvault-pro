@@ -20,13 +20,14 @@ interface StreamVaultDB extends DBSchema {
   epg: {
     key: string; // "providerId:YYYY-MM-DD"
     value: {
+      key: string;
       providerId: string;
       date: string;
       programs: CoreEpgProgram[];
       etag?: string;
       updatedAt: number;
     };
-    indexes: { 'by-provider': string };
+    indexes: { 'by-provider': string; 'by-date': string };
   };
   logos: {
     key: string; // URL
@@ -218,6 +219,7 @@ class CacheManager {
       this.misses++;
       return null;
     } catch (error) {
+      console.error('[Cache] Error getting logo:', error);
       this.misses++;
       return null;
     }
@@ -232,30 +234,37 @@ class CacheManager {
         updatedAt: Date.now(),
       });
     } catch (error) {
-      // Ignore logo cache errors
+      console.error('[Cache] Error setting logo:', error);
     }
   }
   
   // ============= Stats =============
   
-  getCacheStats(): { hitRatio: number; hits: number; misses: number } {
+  getCacheStats(): { hits: number; misses: number; hitRatio: number } {
     const total = this.hits + this.misses;
     return {
-      hitRatio: total > 0 ? this.hits / total : 0,
       hits: this.hits,
       misses: this.misses,
+      hitRatio: total > 0 ? this.hits / total : 0,
     };
   }
   
   async clearAll(): Promise<void> {
-    const db = await this.getDB();
-    await db.clear('channels');
-    await db.clear('epg');
-    await db.clear('logos');
-    await db.clear('providers');
-    await db.clear('meta');
-    this.hits = 0;
-    this.misses = 0;
+    try {
+      const db = await this.getDB();
+      await Promise.all([
+        db.clear('channels'),
+        db.clear('epg'),
+        db.clear('logos'),
+        db.clear('providers'),
+        db.clear('meta'),
+      ]);
+      this.hits = 0;
+      this.misses = 0;
+      console.log('[Cache] Cleared all caches');
+    } catch (error) {
+      console.error('[Cache] Error clearing cache:', error);
+    }
   }
 }
 
