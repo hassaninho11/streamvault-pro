@@ -130,11 +130,27 @@ export function AddProviderForm({ onSubmit, onCancel }: AddProviderFormProps) {
           console.log('[AddProviderForm] Direct fetch successful:', data);
         } catch (directError) {
           console.error('[AddProviderForm] Direct fetch also failed:', directError);
-          // Provide helpful error message
+          
+          // Check if it's a mixed content / CORS issue
+          const isHttpUrl = testUrl.startsWith('http://');
+          const isSecurePage = window.location.protocol === 'https:';
+          
+          if (isHttpUrl && isSecurePage) {
+            // Allow saving anyway with a warning
+            setConnectionStatus("error");
+            setErrorMessage(
+              'Cannot verify connection: Your browser blocks HTTP requests from secure pages. ' +
+              'You can still save this provider - streams may work with an external player or custom proxy.'
+            );
+            // Mark as saveable despite error
+            setSuccessMessage('_allow_save_');
+            return;
+          }
+          
+          // Generic error
           throw new Error(
             'Could not connect to the playlist server. ' +
-            'The server may be temporarily unavailable or blocking connections. ' +
-            'Try again later or use a different provider.'
+            'The server may be temporarily unavailable or blocking connections.'
           );
         }
       }
@@ -162,10 +178,14 @@ export function AddProviderForm({ onSubmit, onCancel }: AddProviderFormProps) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (connectionStatus === "success" || activeTab === "m3u-file") {
+    // Allow submit if success, or if we marked it as saveable despite error (HTTP on HTTPS)
+    const canSaveAnyway = successMessage === '_allow_save_';
+    if (connectionStatus === "success" || activeTab === "m3u-file" || canSaveAnyway) {
       onSubmit(formData);
     }
   };
+
+  const canSaveWithWarning = connectionStatus === "error" && successMessage === '_allow_save_';
 
   const isFormValid = () => {
     if (!formData.name) return false;
@@ -346,7 +366,7 @@ export function AddProviderForm({ onSubmit, onCancel }: AddProviderFormProps) {
               )}
               {connectionStatus === "error" && (
                 <>
-                  <AlertCircle className="w-4 h-4" />
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
                   <span className="text-sm">{errorMessage}</span>
                 </>
               )}
@@ -373,11 +393,11 @@ export function AddProviderForm({ onSubmit, onCancel }: AddProviderFormProps) {
             )}
             <Button
               type="submit"
-              variant="glow"
-              disabled={!isFormValid() || (activeTab !== "m3u-file" && connectionStatus !== "success")}
+              variant={canSaveWithWarning ? "outline" : "glow"}
+              disabled={!isFormValid() || (activeTab !== "m3u-file" && connectionStatus !== "success" && !canSaveWithWarning)}
               className="ml-auto"
             >
-              Add Provider
+              {canSaveWithWarning ? "Save Anyway" : "Add Provider"}
             </Button>
           </div>
         </form>
