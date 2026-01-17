@@ -36,9 +36,11 @@ import { PlaybackBlockedScreen } from "./PlaybackBlockedScreen";
 import { localStore } from "@/data/stores/localStore";
 import { toast } from "sonner";
 import {
-  performPreflight,
+  performPreflightAsync,
   PreflightResult,
   PlaybackStrategy,
+  buildProxyUrl,
+  isHlsUrl,
 } from "@/player/PlaybackPreflight";
 import { getCastController } from "@/player/CastController";
 
@@ -135,6 +137,7 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
     
     const video = videoRef.current;
     let originalUrl = streamUrl;
+    let isCancelled = false;
     
     if (!originalUrl) {
       setError("No stream URL available");
@@ -149,221 +152,235 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
     destroyHls();
     setQualityLevels([]);
     
-    // Perform preflight check
-    const castController = getCastController();
-    const preflight = performPreflight({
-      streamUrl: originalUrl,
-      sourceType: directStreamUrl ? 'vod' : 'live',
-      hasChromecast: castController.isChromecastAvailable(),
-      hasAirPlay: castController.isAirPlayAvailable(),
-    });
-    
-    setPreflightResult(preflight);
-    
-    // Log diagnostic code
-    if (preflight.diagnosticCode) {
-      console.log(`[VideoPlayer] Preflight diagnostic: ${preflight.diagnosticCode}`);
-    }
-    
-    // Check if this is an HTTP stream on an HTTPS page
-    const isHttpStream = originalUrl.startsWith('http://');
-    const isSecurePage = window.location.protocol === 'https:';
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    
-    // Detect stream type
-    const lowerUrl = originalUrl.toLowerCase();
-    
     // For Xtream-style URLs without extension, try adding .m3u8 for HLS
     const isXtreamStyle = /\/live\/[^/]+\/[^/]+\/\d+$/.test(originalUrl) || 
                           /\/[^/]+\/[^/]+\/\d+$/.test(originalUrl);
     
-    if (isXtreamStyle && !lowerUrl.includes('.')) {
+    if (isXtreamStyle && !originalUrl.toLowerCase().includes('.')) {
       originalUrl = originalUrl + '.m3u8';
       console.log('[VideoPlayer] Converted to HLS format:', originalUrl);
     }
     
-    const isHls = lowerUrl.includes('.m3u8') || 
-                  lowerUrl.includes('m3u8') || 
-                  isXtreamStyle;
+    const isHls = isHlsUrl(originalUrl);
     
-    const showFinalError = () => {
-      // If mixed content blocked, show smart fallback UI instead of error
-      if (preflight.isMixedContentBlocked) {
+    // Async preflight and playback setup
+    const startPlayback = async () => {
+      if (isCancelled) return;
+      
+      // Perform async preflight check with HTTPS upgrade attempt
+      const castController = getCastController();
+      const preflight = await performPreflightAsync({
+        streamUrl: originalUrl,
+        sourceType: directStreamUrl ? 'vod' : 'live',
+        hasChromecast: castController.isChromecastAvailable(),
+        hasAirPlay: castController.isAirPlayAvailable(),
+      });
+      
+      if (isCancelled) return;
+      
+      setPreflightResult(preflight);
+      
+      // Log diagnostic code
+      console.log(`[VideoPlayer] Preflight result: ${preflight.diagnosticCode}, strategy: ${preflight.recommendedStrategy}`);
+      
+      // Determine which URL to use based on preflight result
+      let playbackUrl = originalUrl;
+      
+      if (preflight.recommendedStrategy === 'upgraded_https' && preflight.resolvedUrl) {
+        // HTTPS upgrade succeeded - use the upgraded URL
+        playbackUrl = preflight.resolvedUrl;
+        console.log('[VideoPlayer] Using HTTPS-upgraded URL');
+      } else if (preflight.recommendedStrategy === 'proxy_https') {
+        // Need to use proxy
+        const proxyUrl = preflight.resolvedUrl || buildProxyUrl(originalUrl);
+        if (proxyUrl) {
+          playbackUrl = proxyUrl;
+          setIsUsingProxy(true);
+          console.log('[VideoPlayer] Using proxy URL');
+        } else if (preflight.isMixedContentBlocked) {
+          // No proxy available, show blocked screen
+          setIsBuffering(false);
+          setShowBlockedScreen(true);
+          return;
+        }
+      } else if (preflight.isMixedContentBlocked && !preflight.canPlayDirect) {
+        // Mixed content blocked and no good strategy found
         setIsBuffering(false);
         setShowBlockedScreen(true);
         return;
       }
       
-      setError("Unable to play this stream. The server may be unavailable.");
-      setIsBuffering(false);
-    };
-    
-    const tryHlsPlayback = (url: string, onFail: () => void) => {
-      if (!Hls.isSupported()) {
-        if (video.canPlayType('application/vnd.apple.mpegurl')) {
-          video.src = url;
-          
-          const handleError = () => {
-            console.error('[VideoPlayer] Native HLS failed');
-            onFail();
-          };
-          
-          video.addEventListener('error', handleError, { once: true });
-          
-          video.play().catch((e) => {
-            console.error('[VideoPlayer] Native HLS play failed:', e);
-            video.removeEventListener('error', handleError);
-            onFail();
-          });
-          return;
-        }
-        onFail();
-        return;
-      }
-      
-      const hls = new Hls({
-        enableWorker: true,
-        lowLatencyMode: true,
-        backBufferLength: 90,
-        maxBufferLength: 30,
-        maxMaxBufferLength: 60,
-        fragLoadingTimeOut: 15000,
-        manifestLoadingTimeOut: 10000,
-        levelLoadingTimeOut: 15000,
-        xhrSetup: (xhr) => {
-          xhr.withCredentials = false;
-        },
-      });
-      hlsRef.current = hls;
-      
-      let manifestLoaded = false;
-      
-      hls.loadSource(url);
-      hls.attachMedia(video);
-      
-      hls.on(Hls.Events.MANIFEST_PARSED, (_event, data) => {
-        manifestLoaded = true;
-        console.log('[VideoPlayer] HLS manifest parsed, levels:', data.levels?.length);
-        
-        if (data.levels && data.levels.length > 0) {
-          const levels: QualityLevel[] = data.levels.map((level: { height: number; width: number; bitrate: number }, index: number) => ({
-            index,
-            height: level.height || 0,
-            width: level.width || 0,
-            bitrate: level.bitrate || 0,
-            label: level.height ? `${level.height}p` : `Kvalitet ${index + 1}`,
-          }));
-          setQualityLevels(levels);
-        }
-        
-        setIsAutoQuality(true);
-        setCurrentQualityLevel(-1);
-        
-        video.play().catch((e) => {
-          console.warn('[VideoPlayer] Autoplay blocked:', e);
-          setIsBuffering(false);
-        });
-      });
-      
-      hls.on(Hls.Events.LEVEL_SWITCHED, (_event, data) => {
-        setCurrentQualityLevel(data.level);
-      });
-      
-      hls.on(Hls.Events.ERROR, (_event, data) => {
-        console.error('[VideoPlayer] HLS error:', data.type, data.details);
-        
-        if (data.fatal) {
-          destroyHls();
-          
-          if (!manifestLoaded) {
-            onFail();
-          } else {
-            setError("Stream playback failed");
-            setIsBuffering(false);
-          }
-        }
-      });
-    };
-    
-    const tryDirectPlayback = (url: string, onFail: () => void) => {
-      console.log('[VideoPlayer] Trying direct playback');
-      video.src = url;
-      
-      const handleCanPlay = () => {
-        console.log('[VideoPlayer] Direct playback ready');
-        setIsBuffering(false);
-        video.play().catch((e) => {
-          console.warn('[VideoPlayer] Direct autoplay blocked:', e);
-        });
-      };
-      
-      const handleError = () => {
-        console.error('[VideoPlayer] Direct playback failed');
-        onFail();
-      };
-      
-      video.addEventListener('canplay', handleCanPlay, { once: true });
-      video.addEventListener('error', handleError, { once: true });
-      
-      video.load();
-    };
-    
-    // Async function to load settings and start playback
-    const startPlayback = async () => {
-      // Load custom proxy URL from settings
-      let customProxyUrl: string | undefined;
+      // Load custom proxy URL from settings if user has one configured
       try {
         const settings = await localStore.getSettings();
-        customProxyUrl = settings.playerSettings?.customProxyUrl;
-        if (customProxyUrl) {
-          console.log('[VideoPlayer] Using custom proxy URL:', customProxyUrl);
+        const customProxyUrl = settings.playerSettings?.customProxyUrl;
+        const savedStrategy = settings.playerSettings?.httpStreamStrategy;
+        
+        // If user has a saved strategy preference and we're dealing with mixed content
+        if (savedStrategy && preflight.isMixedContentBlocked && savedStrategy !== 'auto') {
+          if (savedStrategy === 'proxy_https' && customProxyUrl) {
+            const customProxy = buildProxyUrl(originalUrl, customProxyUrl);
+            if (customProxy) {
+              playbackUrl = customProxy;
+              setIsUsingProxy(true);
+            }
+          } else if (savedStrategy === 'cast_chromecast') {
+            // Let user handle casting
+            setIsBuffering(false);
+            setShowBlockedScreen(true);
+            return;
+          } else if (savedStrategy === 'external_player') {
+            // Let user handle external player
+            setIsBuffering(false);
+            setShowBlockedScreen(true);
+            return;
+          }
         }
       } catch (e) {
         console.warn('[VideoPlayer] Could not load settings:', e);
       }
       
-      // Helper to build proxy URL
-      const buildProxyUrl = (streamUrl: string): string | null => {
-        if (customProxyUrl) {
-          if (customProxyUrl.includes('?') || customProxyUrl.endsWith('=')) {
-            return `${customProxyUrl}${encodeURIComponent(streamUrl)}`;
-          }
-          return `${customProxyUrl}?url=${encodeURIComponent(streamUrl)}`;
-        }
-        if (supabaseUrl) {
-          return `${supabaseUrl}/functions/v1/stream-proxy?url=${encodeURIComponent(streamUrl)}`;
-        }
-        return null;
-      };
+      if (isCancelled) return;
       
-      // Build all possible URLs to try
-      const urlsToTry: string[] = [];
+      // Build list of URLs to try (with fallbacks)
+      const urlsToTry: string[] = [playbackUrl];
       
-      if (isHttpStream && isSecurePage) {
-        const proxyUrl = buildProxyUrl(originalUrl);
-        if (proxyUrl) {
-          urlsToTry.push(proxyUrl);
-          setIsUsingProxy(true);
-          
-          if (isXtreamStyle && originalUrl.endsWith('.m3u8')) {
-            const withoutExt = originalUrl.replace('.m3u8', '');
-            const proxyUrlWithoutExt = buildProxyUrl(withoutExt);
-            if (proxyUrlWithoutExt) {
-              urlsToTry.push(proxyUrlWithoutExt);
-            }
-          }
-        }
-      } else {
-        urlsToTry.push(originalUrl);
-        
-        if (isXtreamStyle && originalUrl.endsWith('.m3u8')) {
-          urlsToTry.push(originalUrl.replace('.m3u8', ''));
+      // Add original without .m3u8 as fallback for Xtream URLs
+      if (isXtreamStyle && originalUrl.endsWith('.m3u8')) {
+        const withoutExt = originalUrl.replace('.m3u8', '');
+        if (isUsingProxy) {
+          const fallbackProxy = buildProxyUrl(withoutExt);
+          if (fallbackProxy) urlsToTry.push(fallbackProxy);
+        } else {
+          urlsToTry.push(withoutExt);
         }
       }
       
       let currentUrlIndex = 0;
       
+      const showFinalError = () => {
+        if (preflight.isMixedContentBlocked) {
+          setIsBuffering(false);
+          setShowBlockedScreen(true);
+          return;
+        }
+        setError("Unable to play this stream. The server may be unavailable.");
+        setIsBuffering(false);
+      };
+      
+      const tryHlsPlayback = (url: string, onFail: () => void) => {
+        if (!Hls.isSupported()) {
+          if (video.canPlayType('application/vnd.apple.mpegurl')) {
+            video.src = url;
+            
+            const handleError = () => {
+              console.error('[VideoPlayer] Native HLS failed');
+              onFail();
+            };
+            
+            video.addEventListener('error', handleError, { once: true });
+            
+            video.play().catch((e) => {
+              console.error('[VideoPlayer] Native HLS play failed:', e);
+              video.removeEventListener('error', handleError);
+              onFail();
+            });
+            return;
+          }
+          onFail();
+          return;
+        }
+        
+        const hls = new Hls({
+          enableWorker: true,
+          lowLatencyMode: true,
+          backBufferLength: 90,
+          maxBufferLength: 30,
+          maxMaxBufferLength: 60,
+          fragLoadingTimeOut: 15000,
+          manifestLoadingTimeOut: 10000,
+          levelLoadingTimeOut: 15000,
+          xhrSetup: (xhr) => {
+            xhr.withCredentials = false;
+          },
+        });
+        hlsRef.current = hls;
+        
+        let manifestLoaded = false;
+        
+        hls.loadSource(url);
+        hls.attachMedia(video);
+        
+        hls.on(Hls.Events.MANIFEST_PARSED, (_event, data) => {
+          manifestLoaded = true;
+          console.log('[VideoPlayer] HLS manifest parsed, levels:', data.levels?.length);
+          
+          if (data.levels && data.levels.length > 0) {
+            const levels: QualityLevel[] = data.levels.map((level: { height: number; width: number; bitrate: number }, index: number) => ({
+              index,
+              height: level.height || 0,
+              width: level.width || 0,
+              bitrate: level.bitrate || 0,
+              label: level.height ? `${level.height}p` : `Kvalitet ${index + 1}`,
+            }));
+            setQualityLevels(levels);
+          }
+          
+          setIsAutoQuality(true);
+          setCurrentQualityLevel(-1);
+          
+          video.play().catch((e) => {
+            console.warn('[VideoPlayer] Autoplay blocked:', e);
+            setIsBuffering(false);
+          });
+        });
+        
+        hls.on(Hls.Events.LEVEL_SWITCHED, (_event, data) => {
+          setCurrentQualityLevel(data.level);
+        });
+        
+        hls.on(Hls.Events.ERROR, (_event, data) => {
+          console.error('[VideoPlayer] HLS error:', data.type, data.details);
+          
+          if (data.fatal) {
+            destroyHls();
+            
+            if (!manifestLoaded) {
+              onFail();
+            } else {
+              setError("Stream playback failed");
+              setIsBuffering(false);
+            }
+          }
+        });
+      };
+      
+      const tryDirectPlayback = (url: string, onFail: () => void) => {
+        console.log('[VideoPlayer] Trying direct playback');
+        video.src = url;
+        
+        const handleCanPlay = () => {
+          console.log('[VideoPlayer] Direct playback ready');
+          setIsBuffering(false);
+          video.play().catch((e) => {
+            console.warn('[VideoPlayer] Direct autoplay blocked:', e);
+          });
+        };
+        
+        const handleError = () => {
+          console.error('[VideoPlayer] Direct playback failed');
+          onFail();
+        };
+        
+        video.addEventListener('canplay', handleCanPlay, { once: true });
+        video.addEventListener('error', handleError, { once: true });
+        
+        video.load();
+      };
+      
       const tryNextUrl = () => {
+        if (isCancelled) return;
+        
         if (currentUrlIndex >= urlsToTry.length) {
           showFinalError();
           return;
@@ -392,9 +409,12 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
     startPlayback();
     
     return () => {
+      isCancelled = true;
       destroyHls();
     };
   }, [channel, directStreamUrl, destroyHls]);
+
+
 
   // Handle strategy selection from blocked screen
   const handleStrategySelect = useCallback((strategy: PlaybackStrategy, resolvedUrl?: string) => {
