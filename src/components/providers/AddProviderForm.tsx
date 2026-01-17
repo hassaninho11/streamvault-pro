@@ -68,24 +68,82 @@ export function AddProviderForm({ onSubmit, onCancel }: AddProviderFormProps) {
         return;
       }
 
-      // Use edge function proxy to avoid CORS issues
-      const { data, error } = await supabase.functions.invoke('playlist-proxy', {
-        body: { url: testUrl, type: 'test' }
-      });
-
-      if (error) {
-        throw new Error(error.message || 'Failed to test connection');
+      // Try edge function proxy first
+      let data;
+      let proxyFailed = false;
+      
+      try {
+        const result = await supabase.functions.invoke('playlist-proxy', {
+          body: { url: testUrl, type: 'test' }
+        });
+        
+        if (result.error) {
+          throw new Error(result.error.message || 'Proxy failed');
+        }
+        
+        // Check if it's a DNS error - if so, try direct fetch
+        if (result.data?.error && (
+          result.data.error.includes('DNS') || 
+          result.data.error.includes('dns') ||
+          result.data.error.includes('could not be found')
+        )) {
+          console.log('[AddProviderForm] Proxy DNS error, trying direct fetch...');
+          proxyFailed = true;
+        } else if (!result.data?.success) {
+          throw new Error(result.data?.error || 'Connection failed');
+        } else {
+          data = result.data;
+        }
+      } catch (proxyError) {
+        console.log('[AddProviderForm] Proxy failed, trying direct fetch...', proxyError);
+        proxyFailed = true;
+      }
+      
+      // Fallback: try direct fetch (works if CORS allows or same-origin)
+      if (proxyFailed) {
+        try {
+          console.log('[AddProviderForm] Attempting direct fetch for:', testUrl.substring(0, 50) + '...');
+          const response = await fetch(testUrl, {
+            method: 'GET',
+            headers: {
+              'Accept': 'application/x-mpegURL, audio/mpegurl, text/plain, */*',
+            },
+          });
+          
+          if (!response.ok) {
+            throw new Error(`Server returned ${response.status}`);
+          }
+          
+          const content = await response.text();
+          const isM3U = content.includes('#EXTM3U') || content.includes('#EXTINF');
+          const channelMatches = content.match(/#EXTINF/g);
+          const channelCount = channelMatches?.length || 0;
+          
+          data = {
+            success: true,
+            isValidPlaylist: isM3U,
+            channelCount,
+            contentLength: content.length,
+            directFetch: true,
+          };
+          
+          console.log('[AddProviderForm] Direct fetch successful:', data);
+        } catch (directError) {
+          console.error('[AddProviderForm] Direct fetch also failed:', directError);
+          // Provide helpful error message
+          throw new Error(
+            'Could not connect to the playlist server. ' +
+            'The server may be temporarily unavailable or blocking connections. ' +
+            'Try again later or use a different provider.'
+          );
+        }
       }
 
-      if (!data.success) {
-        throw new Error(data.error || 'Connection failed');
-      }
-
-      if (data.isValidPlaylist) {
+      if (data?.isValidPlaylist) {
         setConnectionStatus("success");
         setSuccessMessage(
           data.channelCount > 0 
-            ? `Found ${data.channelCount.toLocaleString()} channels` 
+            ? `Found ${data.channelCount.toLocaleString()} channels${data.directFetch ? ' (direct)' : ''}` 
             : "Connection successful!"
         );
       } else {

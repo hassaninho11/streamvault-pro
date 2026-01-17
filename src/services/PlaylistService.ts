@@ -105,24 +105,68 @@ class PlaylistService {
         }
       }, 200);
 
-      // Fetch via edge function proxy to avoid CORS issues
-      const { data, error } = await supabase.functions.invoke('playlist-proxy', {
-        body: { url, type: 'fetch' }
-      });
+      // Try edge function proxy first, fallback to direct fetch
+      let content: string;
+      let proxyFailed = false;
       
-      clearInterval(fetchProgressInterval);
+      try {
+        const { data, error } = await supabase.functions.invoke('playlist-proxy', {
+          body: { url, type: 'fetch' }
+        });
+        
+        clearInterval(fetchProgressInterval);
 
-      if (error) {
-        throw new Error(error.message || 'Failed to fetch playlist');
+        if (error) {
+          throw new Error(error.message || 'Proxy failed');
+        }
+
+        // Check for DNS errors - fallback to direct fetch
+        if (data?.error && (
+          data.error.includes('DNS') || 
+          data.error.includes('dns') ||
+          data.error.includes('could not be found')
+        )) {
+          console.log('[PlaylistService] Proxy DNS error, trying direct fetch...');
+          proxyFailed = true;
+        } else if (!data?.success) {
+          throw new Error(data?.error || 'Failed to fetch playlist');
+        } else {
+          content = data.content;
+        }
+      } catch (proxyError) {
+        clearInterval(fetchProgressInterval);
+        console.log('[PlaylistService] Proxy failed, trying direct fetch...', proxyError);
+        proxyFailed = true;
+      }
+      
+      // Fallback: try direct fetch
+      if (proxyFailed) {
+        console.log('[PlaylistService] Attempting direct fetch for:', url.substring(0, 50) + '...');
+        try {
+          const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+              'Accept': 'application/x-mpegURL, audio/mpegurl, text/plain, */*',
+            },
+          });
+          
+          if (!response.ok) {
+            throw new Error(`Server returned ${response.status}`);
+          }
+          
+          content = await response.text();
+          console.log('[PlaylistService] Direct fetch successful, content length:', content.length);
+        } catch (directError) {
+          console.error('[PlaylistService] Direct fetch also failed:', directError);
+          throw new Error(
+            'Could not connect to the playlist server. ' +
+            'The server may be temporarily unavailable or blocking connections.'
+          );
+        }
       }
 
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to fetch playlist');
-      }
-
-      const content = data.content;
       const fetchMs = performance.now() - fetchStart;
-      const contentHash = generateHash(content.slice(0, 5000)); // Hash first 5KB for speed
+      const contentHash = generateHash(content!.slice(0, 5000)); // Hash first 5KB for speed
       
       // Stage 2: Parsing (30-70%)
       useChannelStore.getState().setParseProgress(30);
@@ -136,7 +180,7 @@ class PlaylistService {
       }, 150);
 
       // Parse in worker
-      const { response: parseResult, timing } = await workerManager.parsePlaylist(content, providerId);
+      const { response: parseResult, timing } = await workerManager.parsePlaylist(content!, providerId);
       
       clearInterval(parseProgressInterval);
       
