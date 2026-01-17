@@ -41,6 +41,11 @@ export default function LiveTVPage() {
   const channelId = searchParams.get("channel");
   const { addToRecentlyWatched } = useRecentlyWatched();
   const { isOpen: isSearchOpen, setIsOpen: setSearchOpen } = useChannelSearch();
+  
+  // Check for VOD playback
+  const isVodMode = searchParams.get("vod") === "true";
+  const vodUrl = searchParams.get("url");
+  const vodTitle = searchParams.get("title");
 
   const { isLoading, channelCount } = useChannelLoader();
   const filteredIds = useFilteredChannelIds();
@@ -135,6 +140,35 @@ export default function LiveTVPage() {
     end: new Date(epgData.next.end),
     category: epgData.next.category,
   } : undefined;
+
+  // VOD Mode - Simplified player for movies/series
+  if (isVodMode && vodUrl) {
+    return (
+      <AppLayout>
+        <div className="flex flex-col h-[calc(100vh-3.5rem)] lg:h-screen p-4">
+          {/* Back button and title */}
+          <div className="flex items-center gap-4 mb-4">
+            <Button variant="ghost" onClick={() => navigate(-1)}>
+              ← Tillbaka
+            </Button>
+            {vodTitle && (
+              <h1 className="text-xl font-semibold truncate">{vodTitle}</h1>
+            )}
+          </div>
+          
+          {/* VOD Player */}
+          <div className="flex-1">
+            <VideoPlayer
+              channel={null}
+              directStreamUrl={vodUrl}
+              vodTitle={vodTitle || undefined}
+              className="h-full"
+            />
+          </div>
+        </div>
+      </AppLayout>
+    );
+  }
 
   // Loading state
   if (isLoading && channelCount === 0) {

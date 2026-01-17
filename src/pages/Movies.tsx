@@ -105,11 +105,20 @@ export default function MoviesPage() {
   }, []);
   
   const handlePlay = useCallback((item: VodItem | Episode) => {
+    if (!item || !item.streamUrl) {
+      console.error('No stream URL for item:', item);
+      return;
+    }
     setSelectedMovie(null);
-    // In real implementation, navigate to player with stream URL
-    console.log('Playing movie:', item.title, item.streamUrl);
-    // navigate(`/player?type=movie&id=${item.id}`);
-  }, []);
+    // Navigate to VOD player with stream info
+    const params = new URLSearchParams({
+      type: 'movie',
+      id: item.id,
+      url: item.streamUrl,
+      title: item.title || 'Film',
+    });
+    navigate(`/live?vod=true&${params.toString()}`);
+  }, [navigate]);
   
   const handleFilterChange = useCallback((filter: Partial<typeof currentFilter>) => {
     setFilter(filter);

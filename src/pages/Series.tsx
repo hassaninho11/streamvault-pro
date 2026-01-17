@@ -108,9 +108,20 @@ export default function SeriesPage() {
   }, []);
   
   const handlePlay = useCallback((item: VodItem | Episode) => {
+    if (!item || !item.streamUrl) {
+      console.error('No stream URL for episode:', item);
+      return;
+    }
     setSelectedSeries(null);
-    console.log('Playing episode:', item.title, item.streamUrl);
-  }, []);
+    // Navigate to VOD player with stream info
+    const params = new URLSearchParams({
+      type: 'episode',
+      id: item.id,
+      url: item.streamUrl,
+      title: item.title || 'Avsnitt',
+    });
+    navigate(`/live?vod=true&${params.toString()}`);
+  }, [navigate]);
   
   const handleFilterChange = useCallback((filter: Partial<typeof currentFilter>) => {
     setFilter(filter);
