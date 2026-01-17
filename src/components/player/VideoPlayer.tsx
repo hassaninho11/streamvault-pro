@@ -86,21 +86,49 @@ export function VideoPlayer({ channel, onPrevious, onNext, onOpenCatchup, onOpen
     const video = videoRef.current;
     const url = channel.streamUrl;
     
+    if (!url) {
+      setError("No stream URL available");
+      return;
+    }
+    
     setError(null);
     setIsBuffering(true);
     destroyHls();
     
-    // Check if it's an HLS stream
-    const isHls = url.includes('.m3u8') || url.includes('m3u8');
+    // Detect stream type - be more flexible with detection
+    const lowerUrl = url.toLowerCase();
+    const isHls = lowerUrl.includes('.m3u8') || 
+                  lowerUrl.includes('m3u8') || 
+                  lowerUrl.includes('/live/') ||
+                  lowerUrl.includes('type=m3u8') ||
+                  lowerUrl.includes('.ts') === false; // Assume HLS if not direct TS
     
-    if (isHls && Hls.isSupported()) {
-      // Use HLS.js for HLS streams
+    const tryHlsPlayback = () => {
+      if (!Hls.isSupported()) {
+        // Fallback for Safari with native HLS
+        if (video.canPlayType('application/vnd.apple.mpegurl')) {
+          video.src = url;
+          video.play().catch((e) => {
+            console.error('[VideoPlayer] Native HLS play failed:', e);
+            tryDirectPlayback();
+          });
+          return true;
+        }
+        return false;
+      }
+      
       const hls = new Hls({
         enableWorker: true,
         lowLatencyMode: true,
         backBufferLength: 90,
         maxBufferLength: 30,
         maxMaxBufferLength: 60,
+        fragLoadingTimeOut: 20000,
+        manifestLoadingTimeOut: 20000,
+        levelLoadingTimeOut: 20000,
+        xhrSetup: (xhr) => {
+          xhr.withCredentials = false;
+        },
       });
       hlsRef.current = hls;
       
@@ -108,44 +136,75 @@ export function VideoPlayer({ channel, onPrevious, onNext, onOpenCatchup, onOpen
       hls.attachMedia(video);
       
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        video.play().catch(() => {
-          setError("Failed to start playback");
+        console.log('[VideoPlayer] HLS manifest parsed, starting playback');
+        video.play().catch((e) => {
+          console.warn('[VideoPlayer] Autoplay blocked:', e);
+          // Don't set error for autoplay block - user can click play
           setIsBuffering(false);
         });
       });
       
       hls.on(Hls.Events.ERROR, (_event, data) => {
+        console.error('[VideoPlayer] HLS error:', data.type, data.details, data.fatal);
+        
         if (data.fatal) {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
-              setError("Network error - stream unavailable");
-              hls.startLoad(); // Try to recover
+              if (data.details === 'manifestLoadError' || data.details === 'manifestParsingError') {
+                // Not a valid HLS stream, try direct playback
+                console.log('[VideoPlayer] Not HLS, trying direct playback');
+                destroyHls();
+                tryDirectPlayback();
+              } else {
+                console.log('[VideoPlayer] Network error, retrying...');
+                hls.startLoad();
+              }
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
-              setError("Media error - trying to recover");
+              console.log('[VideoPlayer] Media error, recovering...');
               hls.recoverMediaError();
               break;
             default:
               setError("Stream unavailable");
+              setIsBuffering(false);
               break;
           }
-          setIsBuffering(false);
         }
       });
-    } else if (isHls && video.canPlayType('application/vnd.apple.mpegurl')) {
-      // Native HLS support (Safari)
+      
+      return true;
+    };
+    
+    const tryDirectPlayback = () => {
+      console.log('[VideoPlayer] Trying direct playback for:', url);
       video.src = url;
-      video.play().catch(() => {
-        setError("Failed to play stream");
+      
+      const handleCanPlay = () => {
+        console.log('[VideoPlayer] Direct playback ready');
         setIsBuffering(false);
-      });
+        video.play().catch((e) => {
+          console.warn('[VideoPlayer] Direct autoplay blocked:', e);
+        });
+      };
+      
+      const handleError = () => {
+        console.error('[VideoPlayer] Direct playback failed');
+        setError("Unable to play this stream");
+        setIsBuffering(false);
+      };
+      
+      video.addEventListener('canplay', handleCanPlay, { once: true });
+      video.addEventListener('error', handleError, { once: true });
+      
+      video.load();
+    };
+    
+    // Start with HLS for most streams (IPTV typically uses HLS)
+    if (isHls) {
+      tryHlsPlayback();
     } else {
-      // Direct playback for non-HLS streams
-      video.src = url;
-      video.play().catch(() => {
-        setError("Failed to play stream");
-        setIsBuffering(false);
-      });
+      // For obvious non-HLS (like direct .ts or .mp4), try direct first
+      tryDirectPlayback();
     }
     
     return () => {
