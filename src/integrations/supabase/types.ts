@@ -44,6 +44,57 @@ export type Database = {
         }
         Relationships: []
       }
+      providers: {
+        Row: {
+          channel_count: number | null
+          created_at: string
+          epg_url: string | null
+          id: string
+          is_active: boolean | null
+          last_sync: string | null
+          m3u_url: string | null
+          name: string
+          type: string
+          updated_at: string
+          user_id: string
+          xtream_host: string | null
+          xtream_pass_encrypted: string | null
+          xtream_user: string | null
+        }
+        Insert: {
+          channel_count?: number | null
+          created_at?: string
+          epg_url?: string | null
+          id?: string
+          is_active?: boolean | null
+          last_sync?: string | null
+          m3u_url?: string | null
+          name: string
+          type: string
+          updated_at?: string
+          user_id: string
+          xtream_host?: string | null
+          xtream_pass_encrypted?: string | null
+          xtream_user?: string | null
+        }
+        Update: {
+          channel_count?: number | null
+          created_at?: string
+          epg_url?: string | null
+          id?: string
+          is_active?: boolean | null
+          last_sync?: string | null
+          m3u_url?: string | null
+          name?: string
+          type?: string
+          updated_at?: string
+          user_id?: string
+          xtream_host?: string | null
+          xtream_pass_encrypted?: string | null
+          xtream_user?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
