@@ -108,9 +108,9 @@ export function VideoPlayer({ channel, onPrevious, onNext, onOpenCatchup, onOpen
     if (!channel || !videoRef.current) return;
     
     const video = videoRef.current;
-    let url = channel.streamUrl;
+    let originalUrl = channel.streamUrl;
     
-    if (!url) {
+    if (!originalUrl) {
       setError("No stream URL available");
       return;
     }
@@ -118,39 +118,108 @@ export function VideoPlayer({ channel, onPrevious, onNext, onOpenCatchup, onOpen
     setError(null);
     setIsBuffering(true);
     destroyHls();
+    setQualityLevels([]);
     
-    // Check if we need to proxy HTTP streams (Mixed Content issue)
-    const isHttpStream = url.startsWith('http://');
+    // Check if this is an HTTP stream on an HTTPS page
+    const isHttpStream = originalUrl.startsWith('http://');
+    const isSecurePage = window.location.protocol === 'https:';
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
     
-    if (isHttpStream && supabaseUrl) {
-      // Use stream proxy to avoid Mixed Content blocking
-      url = `${supabaseUrl}/functions/v1/stream-proxy?url=${encodeURIComponent(url)}`;
-      console.log('[VideoPlayer] Using stream proxy for HTTP stream');
+    // Detect stream type
+    const lowerUrl = originalUrl.toLowerCase();
+    
+    // For Xtream-style URLs without extension, try adding .m3u8 for HLS
+    // This helps with some providers that support multiple output formats
+    const isXtreamStyle = /\/live\/[^/]+\/[^/]+\/\d+$/.test(originalUrl) || 
+                          /\/[^/]+\/[^/]+\/\d+$/.test(originalUrl);
+    
+    if (isXtreamStyle && !lowerUrl.includes('.')) {
+      // Try HLS format by appending .m3u8
+      originalUrl = originalUrl + '.m3u8';
+      console.log('[VideoPlayer] Converted to HLS format:', originalUrl);
     }
     
-    // Detect stream type - be more flexible with detection
-    const lowerUrl = channel.streamUrl.toLowerCase();
     const isHls = lowerUrl.includes('.m3u8') || 
                   lowerUrl.includes('m3u8') || 
-                  lowerUrl.includes('/live/') ||
-                  lowerUrl.includes('type=m3u8');
+                  isXtreamStyle;
     
-    // For Xtream streams without extension, assume they need HLS first
-    const isXtreamStyle = lowerUrl.includes('/live/') && !lowerUrl.includes('.ts');
+    // Build all possible URLs to try
+    const urlsToTry: string[] = [];
     
-    const tryHlsPlayback = () => {
+    // If HTTP stream on HTTPS page, we can only try proxy
+    // Direct HTTP will be blocked by Mixed Content
+    if (isHttpStream && isSecurePage) {
+      // Try proxy first (only option for Mixed Content)
+      if (supabaseUrl) {
+        urlsToTry.push(`${supabaseUrl}/functions/v1/stream-proxy?url=${encodeURIComponent(originalUrl)}`);
+        
+        // Also try without .m3u8 extension via proxy
+        if (isXtreamStyle && originalUrl.endsWith('.m3u8')) {
+          const withoutExt = originalUrl.replace('.m3u8', '');
+          urlsToTry.push(`${supabaseUrl}/functions/v1/stream-proxy?url=${encodeURIComponent(withoutExt)}`);
+        }
+      }
+    } else {
+      // HTTPS stream or HTTP page - try direct first
+      urlsToTry.push(originalUrl);
+      
+      // Also try without .m3u8 if we added it
+      if (isXtreamStyle && originalUrl.endsWith('.m3u8')) {
+        urlsToTry.push(originalUrl.replace('.m3u8', ''));
+      }
+    }
+    
+    let currentUrlIndex = 0;
+    
+    const showFinalError = () => {
+      if (isHttpStream && isSecurePage) {
+        setError("Cannot play HTTP streams on this secure page. Your IPTV provider may also restrict playback to your home IP address. Try a different channel or contact your provider.");
+      } else {
+        setError("Unable to play this stream. The server may be unavailable.");
+      }
+      setIsBuffering(false);
+    };
+    
+    const tryNextUrl = () => {
+      if (currentUrlIndex >= urlsToTry.length) {
+        showFinalError();
+        return;
+      }
+      
+      const url = urlsToTry[currentUrlIndex];
+      currentUrlIndex++;
+      
+      console.log(`[VideoPlayer] Trying URL ${currentUrlIndex}/${urlsToTry.length}:`, url.substring(0, 80) + '...');
+      
+      if (isHls) {
+        tryHlsPlayback(url, tryNextUrl);
+      } else {
+        tryDirectPlayback(url, tryNextUrl);
+      }
+    };
+    
+    const tryHlsPlayback = (url: string, onFail: () => void) => {
       if (!Hls.isSupported()) {
         // Fallback for Safari with native HLS
         if (video.canPlayType('application/vnd.apple.mpegurl')) {
           video.src = url;
+          
+          const handleError = () => {
+            console.error('[VideoPlayer] Native HLS failed');
+            onFail();
+          };
+          
+          video.addEventListener('error', handleError, { once: true });
+          
           video.play().catch((e) => {
             console.error('[VideoPlayer] Native HLS play failed:', e);
-            tryDirectPlayback();
+            video.removeEventListener('error', handleError);
+            onFail();
           });
-          return true;
+          return;
         }
-        return false;
+        onFail();
+        return;
       }
       
       const hls = new Hls({
@@ -159,19 +228,22 @@ export function VideoPlayer({ channel, onPrevious, onNext, onOpenCatchup, onOpen
         backBufferLength: 90,
         maxBufferLength: 30,
         maxMaxBufferLength: 60,
-        fragLoadingTimeOut: 20000,
-        manifestLoadingTimeOut: 20000,
-        levelLoadingTimeOut: 20000,
+        fragLoadingTimeOut: 15000,
+        manifestLoadingTimeOut: 10000,
+        levelLoadingTimeOut: 15000,
         xhrSetup: (xhr) => {
           xhr.withCredentials = false;
         },
       });
       hlsRef.current = hls;
       
+      let manifestLoaded = false;
+      
       hls.loadSource(url);
       hls.attachMedia(video);
       
       hls.on(Hls.Events.MANIFEST_PARSED, (_event, data) => {
+        manifestLoaded = true;
         console.log('[VideoPlayer] HLS manifest parsed, levels:', data.levels?.length);
         
         // Build quality levels from HLS levels
@@ -184,61 +256,41 @@ export function VideoPlayer({ channel, onPrevious, onNext, onOpenCatchup, onOpen
             label: level.height ? `${level.height}p` : `Kvalitet ${index + 1}`,
           }));
           setQualityLevels(levels);
-          console.log('[VideoPlayer] Quality levels:', levels.map(l => l.label).join(', '));
-        } else {
-          setQualityLevels([]);
         }
         
-        // Reset to auto quality on new stream
         setIsAutoQuality(true);
         setCurrentQualityLevel(-1);
         
         video.play().catch((e) => {
           console.warn('[VideoPlayer] Autoplay blocked:', e);
-          // Don't set error for autoplay block - user can click play
           setIsBuffering(false);
         });
       });
       
-      // Track level switching (for auto mode display)
       hls.on(Hls.Events.LEVEL_SWITCHED, (_event, data) => {
         setCurrentQualityLevel(data.level);
-        console.log(`[VideoPlayer] Level switched to ${data.level}`);
       });
       
       hls.on(Hls.Events.ERROR, (_event, data) => {
-        console.error('[VideoPlayer] HLS error:', data.type, data.details, data.fatal);
+        console.error('[VideoPlayer] HLS error:', data.type, data.details);
         
         if (data.fatal) {
-          switch (data.type) {
-            case Hls.ErrorTypes.NETWORK_ERROR:
-              if (data.details === 'manifestLoadError' || data.details === 'manifestParsingError') {
-                // Not a valid HLS stream, try direct playback
-                console.log('[VideoPlayer] Not HLS, trying direct playback');
-                destroyHls();
-                tryDirectPlayback();
-              } else {
-                console.log('[VideoPlayer] Network error, retrying...');
-                hls.startLoad();
-              }
-              break;
-            case Hls.ErrorTypes.MEDIA_ERROR:
-              console.log('[VideoPlayer] Media error, recovering...');
-              hls.recoverMediaError();
-              break;
-            default:
-              setError("Stream unavailable");
-              setIsBuffering(false);
-              break;
+          destroyHls();
+          
+          // If manifest never loaded, try next URL
+          if (!manifestLoaded) {
+            onFail();
+          } else {
+            // Manifest was loaded but playback failed - show error
+            setError("Stream playback failed");
+            setIsBuffering(false);
           }
         }
       });
-      
-      return true;
     };
     
-    const tryDirectPlayback = () => {
-      console.log('[VideoPlayer] Trying direct playback for:', url);
+    const tryDirectPlayback = (url: string, onFail: () => void) => {
+      console.log('[VideoPlayer] Trying direct playback');
       video.src = url;
       
       const handleCanPlay = () => {
@@ -251,8 +303,7 @@ export function VideoPlayer({ channel, onPrevious, onNext, onOpenCatchup, onOpen
       
       const handleError = () => {
         console.error('[VideoPlayer] Direct playback failed');
-        setError("Unable to play this stream");
-        setIsBuffering(false);
+        onFail();
       };
       
       video.addEventListener('canplay', handleCanPlay, { once: true });
@@ -261,12 +312,11 @@ export function VideoPlayer({ channel, onPrevious, onNext, onOpenCatchup, onOpen
       video.load();
     };
     
-    // Start with HLS for most IPTV streams, or Xtream-style URLs
-    if (isHls || isXtreamStyle) {
-      tryHlsPlayback();
+    // Start trying URLs
+    if (urlsToTry.length === 0) {
+      showFinalError();
     } else {
-      // For obvious non-HLS (like direct .ts or .mp4), try direct first
-      tryDirectPlayback();
+      tryNextUrl();
     }
     
     return () => {
@@ -467,23 +517,52 @@ export function VideoPlayer({ channel, onPrevious, onNext, onOpenCatchup, onOpen
       {/* Error Overlay */}
       {error && (
         <div className="absolute inset-0 flex items-center justify-center bg-player-bg/80">
-          <div className="text-center">
+          <div className="text-center max-w-md px-4">
             <AlertCircle className="w-12 h-12 text-destructive mx-auto mb-2" />
-            <p className="text-sm text-muted-foreground">{error}</p>
-            <Button
-              variant="outline"
-              size="sm"
-              className="mt-4"
-              onClick={() => {
-                setError(null);
-                if (videoRef.current) {
-                  videoRef.current.load();
-                  videoRef.current.play();
-                }
-              }}
-            >
-              Retry
-            </Button>
+            <p className="text-sm text-muted-foreground mb-4">{error}</p>
+            <div className="flex flex-col sm:flex-row gap-2 justify-center">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setError(null);
+                  setIsBuffering(true);
+                  // Re-trigger the effect by forcing a re-render
+                  if (videoRef.current && channel?.streamUrl) {
+                    destroyHls();
+                    // Small delay then retry
+                    setTimeout(() => {
+                      if (channel) {
+                        videoRef.current!.src = channel.streamUrl;
+                        videoRef.current!.load();
+                      }
+                    }, 100);
+                  }
+                }}
+              >
+                Retry
+              </Button>
+              {channel?.streamUrl && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    // Copy stream URL to clipboard
+                    navigator.clipboard.writeText(channel.streamUrl).then(() => {
+                      alert('Stream URL copied! Open in VLC or your preferred media player.');
+                    });
+                  }}
+                >
+                  Copy URL for VLC
+                </Button>
+              )}
+            </div>
+            {channel?.streamUrl.startsWith('http://') && window.location.protocol === 'https:' && (
+              <p className="text-xs text-muted-foreground mt-4 opacity-70">
+                Tip: HTTP streams may be blocked by your browser on secure pages. 
+                Try opening the URL in VLC or another media player.
+              </p>
+            )}
           </div>
         </div>
       )}
