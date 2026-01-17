@@ -14,6 +14,38 @@ export type Database = {
   }
   public: {
     Tables: {
+      favorites: {
+        Row: {
+          channel_id: string
+          created_at: string
+          id: string
+          provider_id: string | null
+          user_id: string
+        }
+        Insert: {
+          channel_id: string
+          created_at?: string
+          id?: string
+          provider_id?: string | null
+          user_id: string
+        }
+        Update: {
+          channel_id?: string
+          created_at?: string
+          id?: string
+          provider_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "favorites_provider_id_fkey"
+            columns: ["provider_id"]
+            isOneToOne: false
+            referencedRelation: "providers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -94,6 +126,41 @@ export type Database = {
           xtream_user?: string | null
         }
         Relationships: []
+      }
+      recently_watched: {
+        Row: {
+          channel_id: string
+          id: string
+          last_watched_at: string
+          provider_id: string | null
+          user_id: string
+          watch_duration: number | null
+        }
+        Insert: {
+          channel_id: string
+          id?: string
+          last_watched_at?: string
+          provider_id?: string | null
+          user_id: string
+          watch_duration?: number | null
+        }
+        Update: {
+          channel_id?: string
+          id?: string
+          last_watched_at?: string
+          provider_id?: string | null
+          user_id?: string
+          watch_duration?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recently_watched_provider_id_fkey"
+            columns: ["provider_id"]
+            isOneToOne: false
+            referencedRelation: "providers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
