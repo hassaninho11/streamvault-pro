@@ -144,13 +144,15 @@ export default function ProvidersPage() {
                       </p>
                     </div>
                   </div>
-                  {provider.m3u_url && (
-                    <div className="mt-3 pt-3 border-t border-border">
-                      <p className="text-xs text-muted-foreground truncate">
-                        {provider.m3u_url}
-                      </p>
+                  {/* Security: Never show full URL */}
+                  <div className="mt-3 pt-3 border-t border-border">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span className="inline-flex items-center gap-1">
+                        <span className="w-2 h-2 rounded-full bg-success" />
+                        Credentials encrypted
+                      </span>
                     </div>
-                  )}
+                  </div>
                 </CardContent>
               </Card>
             ))}
