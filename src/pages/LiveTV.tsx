@@ -1,5 +1,6 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
+import { Loader2, Tv } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { VideoPlayer } from "@/components/player/VideoPlayer";
 import { ChannelList } from "@/components/channels/ChannelList";
@@ -7,95 +8,75 @@ import { TVLayout } from "@/components/tv/TVLayout";
 import { TVChannelList } from "@/components/tv/TVChannelList";
 import { TVNowNextPanel } from "@/components/tv/TVNowNextPanel";
 import { useTVMode } from "@/contexts/TVModeContext";
-import { Channel } from "@/types/iptv";
+import { useChannelLoader } from "@/hooks/useChannelLoader";
+import { useChannelStore, useFilteredChannelIds } from "@/data/stores/channelStore";
+import { useRecentlyWatched } from "@/hooks/useRecentlyWatched";
+import { Button } from "@/components/ui/button";
+import { Channel, EpgProgram } from "@/types/iptv";
+import type { CoreChannel } from "@/core/types";
 
-// Demo channels with more variety
-const demoChannels: Channel[] = [
-  { id: "1", providerId: "1", channelId: "ch1", name: "SVT1", group: "Sweden", streamUrl: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8", logoUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/6/62/SVT1_logo_2016.svg/512px-SVT1_logo_2016.svg.png", isHD: true },
-  { id: "2", providerId: "1", channelId: "ch2", name: "SVT2", group: "Sweden", streamUrl: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8", isHD: true },
-  { id: "3", providerId: "1", channelId: "ch3", name: "TV4", group: "Sweden", streamUrl: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8", logoUrl: "https://upload.wikimedia.org/wikipedia/commons/thumb/8/85/TV4_logo_2016.svg/512px-TV4_logo_2016.svg.png", isHD: true },
-  { id: "4", providerId: "1", channelId: "ch4", name: "Kanal 5", group: "Sweden", streamUrl: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8", isHD: true },
-  { id: "5", providerId: "1", channelId: "ch5", name: "TV3", group: "Sweden", streamUrl: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8", isHD: false },
-  { id: "6", providerId: "1", channelId: "ch6", name: "CNN International", group: "News", streamUrl: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8", isHD: true },
-  { id: "7", providerId: "1", channelId: "ch7", name: "BBC World News", group: "News", streamUrl: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8", isHD: true },
-  { id: "8", providerId: "1", channelId: "ch8", name: "Sky News", group: "News", streamUrl: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8", isHD: true },
-  { id: "9", providerId: "1", channelId: "ch9", name: "Al Jazeera", group: "News", streamUrl: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8", isHD: true },
-  { id: "10", providerId: "1", channelId: "ch10", name: "Eurosport 1", group: "Sports", streamUrl: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8", isHD: true },
-  { id: "11", providerId: "1", channelId: "ch11", name: "Eurosport 2", group: "Sports", streamUrl: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8", isHD: true },
-  { id: "12", providerId: "1", channelId: "ch12", name: "ESPN", group: "Sports", streamUrl: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8", isHD: true },
-  { id: "13", providerId: "1", channelId: "ch13", name: "Discovery Channel", group: "Entertainment", streamUrl: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8", isHD: true },
-  { id: "14", providerId: "1", channelId: "ch14", name: "National Geographic", group: "Entertainment", streamUrl: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8", isHD: true },
-  { id: "15", providerId: "1", channelId: "ch15", name: "HBO", group: "Movies", streamUrl: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8", isHD: true },
-  { id: "16", providerId: "1", channelId: "ch16", name: "Cartoon Network", group: "Kids", streamUrl: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8", isHD: false },
-  { id: "17", providerId: "1", channelId: "ch17", name: "Disney Channel", group: "Kids", streamUrl: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8", isHD: true },
-  { id: "18", providerId: "1", channelId: "ch18", name: "MTV", group: "Music", streamUrl: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8", isHD: true },
-];
-
-// Demo EPG data (matches EpgProgram type)
-import { EpgProgram } from "@/types/iptv";
-
-const createEpgProgram = (channelId: string, title: string, start: Date, end: Date, description?: string): EpgProgram => ({
-  id: `epg-${channelId}-${start.getTime()}`,
-  channelId,
-  title,
-  start,
-  end,
-  description,
-});
-
-const demoEpgData: Record<string, { now: EpgProgram; next: EpgProgram }> = {
-  "1": { 
-    now: createEpgProgram("1", "Nyheterna", new Date(), new Date(Date.now() + 1800000), "Dagens nyheter från Sverige och världen"),
-    next: createEpgProgram("1", "Väder", new Date(Date.now() + 1800000), new Date(Date.now() + 3600000))
-  },
-  "2": { 
-    now: createEpgProgram("2", "Dokumentär: Naturen", new Date(), new Date(Date.now() + 3600000), "En fascinerande resa genom svenska naturlandskap"),
-    next: createEpgProgram("2", "Kulturnytt", new Date(Date.now() + 3600000), new Date(Date.now() + 5400000))
-  },
-  "3": { 
-    now: createEpgProgram("3", "Nyhetsmorgon", new Date(), new Date(Date.now() + 7200000), "Morgonnyheter med gäster och reportage"),
-    next: createEpgProgram("3", "Kalla Fakta", new Date(Date.now() + 7200000), new Date(Date.now() + 10800000))
-  },
-  "6": { 
-    now: createEpgProgram("6", "CNN Newsroom", new Date(), new Date(Date.now() + 3600000), "Breaking news and analysis from around the world"),
-    next: createEpgProgram("6", "World Sport", new Date(Date.now() + 3600000), new Date(Date.now() + 5400000))
-  },
-  "10": { 
-    now: createEpgProgram("10", "Tour de France", new Date(), new Date(Date.now() + 10800000), "Live coverage of today's stage"),
-    next: createEpgProgram("10", "Tennis Live", new Date(Date.now() + 10800000), new Date(Date.now() + 14400000))
-  },
-};
+// Convert CoreChannel to Channel for UI components
+function toUIChannel(core: CoreChannel, isFavorite: boolean): Channel {
+  return {
+    id: core.id,
+    providerId: core.providerId,
+    channelId: core.channelId,
+    name: core.name,
+    group: core.group,
+    streamUrl: core.streamUrl,
+    logoUrl: core.logoUrl,
+    epgId: core.epgId,
+    number: core.number,
+    isHD: core.isHD,
+    isFavorite,
+  };
+}
 
 export default function LiveTVPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { isTVMode } = useTVMode();
   const channelId = searchParams.get("channel");
+  const { addToRecentlyWatched } = useRecentlyWatched();
 
-  const [channels, setChannels] = useState<Channel[]>(demoChannels);
-  
+  const { isLoading, channelCount } = useChannelLoader();
+  const filteredIds = useFilteredChannelIds();
+  const index = useChannelStore((state) => state.index);
+  const favoriteIds = useChannelStore((state) => state.favoriteIds);
+  const toggleFavorite = useChannelStore((state) => state.toggleFavorite);
+  const nowNextMap = useChannelStore((state) => state.nowNextMap);
+
+  // Convert store channels to UI channels
+  const channels: Channel[] = useMemo(() => {
+    if (!index) return [];
+    return filteredIds.map(id => {
+      const channel = index.byId.get(id);
+      if (!channel) return null;
+      return toUIChannel(channel, favoriteIds.has(id));
+    }).filter(Boolean) as Channel[];
+  }, [filteredIds, index, favoriteIds]);
+
   const selectedChannel = useMemo(() => {
+    if (!channelId || !index) return null;
+    const core = index.byId.get(channelId);
+    if (!core) return null;
+    return toUIChannel(core, favoriteIds.has(channelId));
+  }, [channelId, index, favoriteIds]);
+
+  // Track channel viewing
+  useEffect(() => {
     if (channelId) {
-      return channels.find((ch) => ch.id === channelId) || null;
+      addToRecentlyWatched(channelId);
     }
-    return null;
-  }, [channels, channelId]);
+  }, [channelId, addToRecentlyWatched]);
 
   const handleSelectChannel = useCallback((channel: Channel) => {
     navigate(`/live?channel=${channel.id}`);
   }, [navigate]);
 
-  const handleToggleFavoriteById = useCallback((channelId: string) => {
-    setChannels((prev) =>
-      prev.map((ch) =>
-        ch.id === channelId ? { ...ch, isFavorite: !ch.isFavorite } : ch
-      )
-    );
-  }, []);
-
   const handleToggleFavorite = useCallback((channel: Channel) => {
-    handleToggleFavoriteById(channel.id);
-  }, [handleToggleFavoriteById]);
+    toggleFavorite(channel.id);
+  }, [toggleFavorite]);
 
   const currentIndex = selectedChannel 
     ? channels.findIndex((ch) => ch.id === selectedChannel.id)
@@ -112,6 +93,57 @@ export default function LiveTVPage() {
       handleSelectChannel(channels[currentIndex + 1]);
     }
   }, [currentIndex, channels, handleSelectChannel]);
+
+  // Get EPG data for selected channel
+  const epgData = selectedChannel ? nowNextMap.get(selectedChannel.id) : undefined;
+  const currentProgram: EpgProgram | undefined = epgData?.now ? {
+    id: epgData.now.id,
+    channelId: epgData.now.channelId,
+    title: epgData.now.title,
+    description: epgData.now.description,
+    start: new Date(epgData.now.start),
+    end: new Date(epgData.now.end),
+    category: epgData.now.category,
+  } : undefined;
+  const nextProgram: EpgProgram | undefined = epgData?.next ? {
+    id: epgData.next.id,
+    channelId: epgData.next.channelId,
+    title: epgData.next.title,
+    description: epgData.next.description,
+    start: new Date(epgData.next.start),
+    end: new Date(epgData.next.end),
+    category: epgData.next.category,
+  } : undefined;
+
+  // Loading state
+  if (isLoading && channelCount === 0) {
+    return (
+      <AppLayout>
+        <div className="flex flex-col items-center justify-center min-h-[80vh] px-4">
+          <Loader2 className="w-12 h-12 text-primary animate-spin mb-4" />
+          <p className="text-muted-foreground">Loading channels...</p>
+        </div>
+      </AppLayout>
+    );
+  }
+
+  // No channels state
+  if (!isLoading && channelCount === 0) {
+    return (
+      <AppLayout>
+        <div className="flex flex-col items-center justify-center min-h-[80vh] px-4">
+          <Tv className="w-16 h-16 text-muted-foreground/30 mb-4" />
+          <h2 className="text-xl font-semibold mb-2">No Channels Available</h2>
+          <p className="text-muted-foreground text-center mb-6 max-w-md">
+            Add a provider to start watching your favorite channels
+          </p>
+          <Button variant="glow" onClick={() => navigate("/providers")}>
+            Add Provider
+          </Button>
+        </div>
+      </AppLayout>
+    );
+  }
 
   // TV Mode Layout
   if (isTVMode) {
@@ -149,9 +181,9 @@ export default function LiveTVPage() {
                     <span className="px-2 py-1 bg-primary/20 text-primary text-sm rounded font-medium">HD</span>
                   )}
                 </div>
-                {demoEpgData[selectedChannel.id as keyof typeof demoEpgData] && (
+                {currentProgram && (
                   <div className="mt-2 text-lg text-muted-foreground">
-                    Nu: {demoEpgData[selectedChannel.id as keyof typeof demoEpgData].now.title}
+                    Nu: {currentProgram.title}
                   </div>
                 )}
               </div>
@@ -160,16 +192,11 @@ export default function LiveTVPage() {
 
           {/* Now/Next Panel - Right */}
           <div className="w-96 flex-shrink-0 border-l border-border">
-            {(() => {
-              const epg = selectedChannel ? demoEpgData[selectedChannel.id as keyof typeof demoEpgData] : undefined;
-              return (
-                <TVNowNextPanel
-                  channel={selectedChannel}
-                  currentProgram={epg?.now}
-                  nextProgram={epg?.next}
-                />
-              );
-            })()}
+            <TVNowNextPanel
+              channel={selectedChannel}
+              currentProgram={currentProgram}
+              nextProgram={nextProgram}
+            />
           </div>
         </div>
       </TVLayout>

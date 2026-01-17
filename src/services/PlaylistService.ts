@@ -1,10 +1,12 @@
 /**
  * PlaylistService - Handles fetching and parsing of M3U/Xtream playlists
  * Uses Web Workers for parsing to keep UI responsive
+ * Uses edge function proxy to avoid CORS issues
  */
 
 import { workerManager } from '@/workers/workerManager';
 import { useChannelStore } from '@/data/stores/channelStore';
+import { supabase } from '@/integrations/supabase/client';
 import type { CoreChannel, ChannelIndex } from '@/core/types';
 
 export interface PlaylistLoadResult {
@@ -31,18 +33,20 @@ class PlaylistService {
       useChannelStore.getState().setLoading(true);
       useChannelStore.getState().setParseProgress(10);
 
-      // Fetch the playlist content
-      const response = await fetch(url, {
-        headers: {
-          'Accept': 'application/x-mpegURL, audio/mpegurl, audio/x-mpegurl, */*',
-        },
+      // Fetch via edge function proxy to avoid CORS issues
+      const { data, error } = await supabase.functions.invoke('playlist-proxy', {
+        body: { url, type: 'fetch' }
       });
 
-      if (!response.ok) {
-        throw new Error(`Failed to fetch playlist: ${response.status} ${response.statusText}`);
+      if (error) {
+        throw new Error(error.message || 'Failed to fetch playlist');
       }
 
-      const content = await response.text();
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to fetch playlist');
+      }
+
+      const content = data.content;
       const fetchMs = performance.now() - fetchStart;
       
       useChannelStore.getState().setParseProgress(40);
