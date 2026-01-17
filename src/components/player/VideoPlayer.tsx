@@ -108,7 +108,7 @@ export function VideoPlayer({ channel, onPrevious, onNext, onOpenCatchup, onOpen
     if (!channel || !videoRef.current) return;
     
     const video = videoRef.current;
-    const url = channel.streamUrl;
+    let url = channel.streamUrl;
     
     if (!url) {
       setError("No stream URL available");
@@ -119,13 +119,25 @@ export function VideoPlayer({ channel, onPrevious, onNext, onOpenCatchup, onOpen
     setIsBuffering(true);
     destroyHls();
     
+    // Check if we need to proxy HTTP streams (Mixed Content issue)
+    const isHttpStream = url.startsWith('http://');
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    
+    if (isHttpStream && supabaseUrl) {
+      // Use stream proxy to avoid Mixed Content blocking
+      url = `${supabaseUrl}/functions/v1/stream-proxy?url=${encodeURIComponent(url)}`;
+      console.log('[VideoPlayer] Using stream proxy for HTTP stream');
+    }
+    
     // Detect stream type - be more flexible with detection
-    const lowerUrl = url.toLowerCase();
+    const lowerUrl = channel.streamUrl.toLowerCase();
     const isHls = lowerUrl.includes('.m3u8') || 
                   lowerUrl.includes('m3u8') || 
                   lowerUrl.includes('/live/') ||
-                  lowerUrl.includes('type=m3u8') ||
-                  lowerUrl.includes('.ts') === false; // Assume HLS if not direct TS
+                  lowerUrl.includes('type=m3u8');
+    
+    // For Xtream streams without extension, assume they need HLS first
+    const isXtreamStyle = lowerUrl.includes('/live/') && !lowerUrl.includes('.ts');
     
     const tryHlsPlayback = () => {
       if (!Hls.isSupported()) {
@@ -249,8 +261,8 @@ export function VideoPlayer({ channel, onPrevious, onNext, onOpenCatchup, onOpen
       video.load();
     };
     
-    // Start with HLS for most streams (IPTV typically uses HLS)
-    if (isHls) {
+    // Start with HLS for most IPTV streams, or Xtream-style URLs
+    if (isHls || isXtreamStyle) {
       tryHlsPlayback();
     } else {
       // For obvious non-HLS (like direct .ts or .mp4), try direct first
