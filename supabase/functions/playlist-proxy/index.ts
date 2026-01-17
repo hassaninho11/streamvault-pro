@@ -18,6 +18,43 @@ interface ProxyRequest {
   action?: string;
 }
 
+// Helper function to perform fetch with retries
+async function fetchWithRetry(url: string, options: RequestInit, maxRetries = 3): Promise<Response> {
+  let lastError: Error | null = null;
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`[playlist-proxy] Fetch attempt ${attempt}/${maxRetries} for: ${url.substring(0, 80)}...`);
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
+      
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+      });
+      
+      clearTimeout(timeoutId);
+      return response;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      console.error(`[playlist-proxy] Attempt ${attempt} failed:`, lastError.message);
+      
+      // If it's a DNS error, wait a bit before retrying
+      if (lastError.message.includes('dns error') || lastError.message.includes('lookup')) {
+        console.log(`[playlist-proxy] DNS error detected, waiting before retry...`);
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+      } else if (lastError.name === 'AbortError') {
+        console.log(`[playlist-proxy] Request timed out`);
+        // Don't retry on timeout
+        break;
+      }
+    }
+  }
+  
+  throw lastError || new Error('Failed to fetch after retries');
+}
+
 serve(async (req: Request) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -54,9 +91,33 @@ serve(async (req: Request) => {
     console.error('[playlist-proxy] Error:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     
+    // Provide more specific error messages
+    if (errorMessage.includes('dns error') || errorMessage.includes('lookup')) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'DNS resolution failed. The server address could not be found. Please check the URL or try again later.',
+          details: 'The playlist server hostname could not be resolved. This may be a temporary network issue or an invalid server address.'
+        }),
+        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    if (errorMessage.includes('AbortError') || errorMessage.includes('timeout')) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'Connection timed out. The server took too long to respond.',
+          details: 'The playlist server did not respond within the timeout period. Try again later.'
+        }),
+        { status: 504, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
     if (errorMessage.includes('error sending request') || errorMessage.includes('connection')) {
       return new Response(
-        JSON.stringify({ error: 'Could not connect to the server. Check the URL and try again.' }),
+        JSON.stringify({ 
+          error: 'Could not connect to the server. Check the URL and try again.',
+          details: errorMessage
+        }),
         { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -102,11 +163,24 @@ async function handleM3URequest(body: ProxyRequest, type: string) {
   }
 
   const fetchStart = Date.now();
-  const response = await fetch(url, {
+  
+  // Use realistic user agents that IPTV providers expect
+  const userAgents = [
+    'VLC/3.0.18 LibVLC/3.0.18',
+    'Lavf/60.3.100',
+    'okhttp/4.9.3',
+    'Dalvik/2.1.0 (Linux; U; Android 12)',
+    'ExoPlayerLib/2.18.1',
+  ];
+  const randomUserAgent = userAgents[Math.floor(Math.random() * userAgents.length)];
+  
+  const response = await fetchWithRetry(url, {
     method: 'GET',
     headers: {
       'Accept': 'application/x-mpegURL, audio/mpegurl, audio/x-mpegurl, text/plain, */*',
-      'User-Agent': 'StreamVault/1.0',
+      'User-Agent': randomUserAgent,
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept-Encoding': 'gzip, deflate',
     },
   });
 
@@ -175,11 +249,11 @@ async function handleEpgRequest(body: ProxyRequest) {
   console.log(`[playlist-proxy] EPG request for: ${url.substring(0, 100)}...`);
 
   const fetchStart = Date.now();
-  const response = await fetch(url, {
+  const response = await fetchWithRetry(url, {
     method: 'GET',
     headers: {
       'Accept': 'application/xml, text/xml, application/gzip, */*',
-      'User-Agent': 'StreamVault/1.0',
+      'User-Agent': 'VLC/3.0.18 LibVLC/3.0.18',
     },
   });
 
@@ -257,11 +331,11 @@ async function handleXtreamRequest(body: ProxyRequest, type: ProxyRequestType) {
   console.log(`[playlist-proxy] Xtream ${type} request to: ${cleanHost}`);
 
   const fetchStart = Date.now();
-  const response = await fetch(apiUrl, {
+  const response = await fetchWithRetry(apiUrl, {
     method: 'GET',
     headers: {
       'Accept': 'application/json, */*',
-      'User-Agent': 'StreamVault/1.0',
+      'User-Agent': 'VLC/3.0.18 LibVLC/3.0.18',
     },
   });
 
