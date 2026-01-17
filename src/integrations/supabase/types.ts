@@ -162,6 +162,48 @@ export type Database = {
           },
         ]
       }
+      user_profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          id: string
+          is_child: boolean
+          is_default: boolean
+          max_rating: string | null
+          name: string
+          pin_hash: string | null
+          settings: Json | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          id?: string
+          is_child?: boolean
+          is_default?: boolean
+          max_rating?: string | null
+          name: string
+          pin_hash?: string | null
+          settings?: Json | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          id?: string
+          is_child?: boolean
+          is_default?: boolean
+          max_rating?: string | null
+          name?: string
+          pin_hash?: string | null
+          settings?: Json | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

@@ -14,12 +14,15 @@ import {
   Menu,
   X,
   Zap,
-  LogOut
+  LogOut,
+  Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { APP_CONFIG } from "@/config/app";
 import { useAuth } from "@/hooks/useAuth";
+import { ProfileSwitcher } from "@/components/profiles/ProfileSwitcher";
+import { useProfile } from "@/contexts/ProfileContext";
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -45,6 +48,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
   const { user, signOut } = useAuth();
+  const { currentProfile, isChildProfile } = useProfile();
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">
@@ -146,26 +150,39 @@ export function AppLayout({ children }: AppLayoutProps) {
               </NavLink>
             ))}
 
-            {/* User & Logout */}
+            {/* Profile Switcher */}
             <div className="mt-4 p-3 rounded-lg bg-muted/50 border border-border">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-xs font-bold text-primary-foreground">
-                  {user?.email?.[0]?.toUpperCase() || "U"}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{user?.email}</p>
-                </div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs text-muted-foreground uppercase tracking-wide">Profil</span>
+                {isChildProfile && (
+                  <span className="text-xs bg-yellow-500 text-black px-1.5 py-0.5 rounded-full">Barn</span>
+                )}
               </div>
-              <Button 
-                size="sm" 
-                variant="ghost" 
-                className="w-full justify-start gap-2 text-muted-foreground hover:text-destructive"
-                onClick={() => signOut()}
-              >
-                <LogOut className="w-4 h-4" />
-                Sign Out
-              </Button>
+              <ProfileSwitcher />
             </div>
+
+            {/* User & Logout */}
+            {user && (
+              <div className="mt-3 p-3 rounded-lg bg-muted/30 border border-border/50">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-xs font-bold text-primary-foreground">
+                    {user?.email?.[0]?.toUpperCase() || "U"}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{user?.email}</p>
+                  </div>
+                </div>
+                <Button 
+                  size="sm" 
+                  variant="ghost" 
+                  className="w-full justify-start gap-2 text-muted-foreground hover:text-destructive"
+                  onClick={() => signOut()}
+                >
+                  <LogOut className="w-4 h-4" />
+                  Logga ut
+                </Button>
+              </div>
+            )}
 
             {/* Trial Banner */}
             <div className="mt-3 p-3 rounded-lg bg-gradient-to-r from-primary/20 to-accent/20 border border-primary/30">
