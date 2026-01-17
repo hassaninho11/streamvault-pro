@@ -9,7 +9,6 @@ import {
   Minimize,
   SkipBack,
   SkipForward,
-  Settings,
   Loader2,
   AlertCircle,
   ChevronUp,
@@ -28,6 +27,7 @@ import { Channel } from "@/types/iptv";
 import { useCatchup } from "@/services/CatchupService";
 import { usePip } from "@/services/PipService";
 import { useMultiScreen } from "@/contexts/MultiScreenContext";
+import { QualitySelector, QualityLevel } from "./QualitySelector";
 
 interface VideoPlayerProps {
   channel: Channel | null;
@@ -51,6 +51,11 @@ export function VideoPlayer({ channel, onPrevious, onNext, onOpenCatchup, onOpen
   const [error, setError] = useState<string | null>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout>();
   
+  // Quality levels state
+  const [qualityLevels, setQualityLevels] = useState<QualityLevel[]>([]);
+  const [currentQualityLevel, setCurrentQualityLevel] = useState(-1); // -1 = Auto
+  const [isAutoQuality, setIsAutoQuality] = useState(true);
+  
   // PiP hook
   const { isActive: isPipActive, isSupported: isPipSupported, togglePip } = usePip(videoRef);
   
@@ -71,6 +76,25 @@ export function VideoPlayer({ channel, onPrevious, onNext, onOpenCatchup, onOpen
     channelId: channel?.id || '', 
     videoElement: videoRef.current 
   });
+  
+  // Handle quality level selection
+  const handleQualityChange = useCallback((levelIndex: number) => {
+    const hls = hlsRef.current;
+    if (!hls) return;
+    
+    if (levelIndex === -1) {
+      // Enable auto quality
+      hls.currentLevel = -1;
+      setIsAutoQuality(true);
+      console.log('[VideoPlayer] Quality set to Auto');
+    } else {
+      // Set specific quality level
+      hls.currentLevel = levelIndex;
+      setIsAutoQuality(false);
+      const level = qualityLevels.find(l => l.index === levelIndex);
+      console.log(`[VideoPlayer] Quality set to ${level?.label || levelIndex}`);
+    }
+  }, [qualityLevels]);
 
   // Cleanup HLS on unmount or channel change
   const destroyHls = useCallback(() => {
@@ -135,13 +159,39 @@ export function VideoPlayer({ channel, onPrevious, onNext, onOpenCatchup, onOpen
       hls.loadSource(url);
       hls.attachMedia(video);
       
-      hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        console.log('[VideoPlayer] HLS manifest parsed, starting playback');
+      hls.on(Hls.Events.MANIFEST_PARSED, (_event, data) => {
+        console.log('[VideoPlayer] HLS manifest parsed, levels:', data.levels?.length);
+        
+        // Build quality levels from HLS levels
+        if (data.levels && data.levels.length > 0) {
+          const levels: QualityLevel[] = data.levels.map((level: { height: number; width: number; bitrate: number }, index: number) => ({
+            index,
+            height: level.height || 0,
+            width: level.width || 0,
+            bitrate: level.bitrate || 0,
+            label: level.height ? `${level.height}p` : `Kvalitet ${index + 1}`,
+          }));
+          setQualityLevels(levels);
+          console.log('[VideoPlayer] Quality levels:', levels.map(l => l.label).join(', '));
+        } else {
+          setQualityLevels([]);
+        }
+        
+        // Reset to auto quality on new stream
+        setIsAutoQuality(true);
+        setCurrentQualityLevel(-1);
+        
         video.play().catch((e) => {
           console.warn('[VideoPlayer] Autoplay blocked:', e);
           // Don't set error for autoplay block - user can click play
           setIsBuffering(false);
         });
+      });
+      
+      // Track level switching (for auto mode display)
+      hls.on(Hls.Events.LEVEL_SWITCHED, (_event, data) => {
+        setCurrentQualityLevel(data.level);
+        console.log(`[VideoPlayer] Level switched to ${data.level}`);
       });
       
       hls.on(Hls.Events.ERROR, (_event, data) => {
@@ -597,10 +647,14 @@ export function VideoPlayer({ channel, onPrevious, onNext, onOpenCatchup, onOpen
               <Grid2X2 className="w-5 h-5" />
             </Button>
 
-            {/* Settings */}
-            <Button variant="player" size="icon">
-              <Settings className="w-5 h-5" />
-            </Button>
+            {/* Quality Selector */}
+            <QualitySelector
+              levels={qualityLevels}
+              currentLevel={currentQualityLevel}
+              onSelectLevel={handleQualityChange}
+              isAuto={isAutoQuality}
+              autoLabel="Auto"
+            />
 
             {/* Fullscreen */}
             <Button variant="player" size="icon" onClick={toggleFullscreen}>
