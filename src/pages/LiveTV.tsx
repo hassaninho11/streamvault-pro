@@ -3,6 +3,10 @@ import { useSearchParams, useNavigate } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { VideoPlayer } from "@/components/player/VideoPlayer";
 import { ChannelList } from "@/components/channels/ChannelList";
+import { TVLayout } from "@/components/tv/TVLayout";
+import { TVChannelList } from "@/components/tv/TVChannelList";
+import { TVNowNextPanel } from "@/components/tv/TVNowNextPanel";
+import { useTVMode } from "@/contexts/TVModeContext";
 import { Channel } from "@/types/iptv";
 
 // Demo channels with more variety
@@ -27,9 +31,45 @@ const demoChannels: Channel[] = [
   { id: "18", providerId: "1", channelId: "ch18", name: "MTV", group: "Music", streamUrl: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8", isHD: true },
 ];
 
+// Demo EPG data (matches EpgProgram type)
+import { EpgProgram } from "@/types/iptv";
+
+const createEpgProgram = (channelId: string, title: string, start: Date, end: Date, description?: string): EpgProgram => ({
+  id: `epg-${channelId}-${start.getTime()}`,
+  channelId,
+  title,
+  start,
+  end,
+  description,
+});
+
+const demoEpgData: Record<string, { now: EpgProgram; next: EpgProgram }> = {
+  "1": { 
+    now: createEpgProgram("1", "Nyheterna", new Date(), new Date(Date.now() + 1800000), "Dagens nyheter från Sverige och världen"),
+    next: createEpgProgram("1", "Väder", new Date(Date.now() + 1800000), new Date(Date.now() + 3600000))
+  },
+  "2": { 
+    now: createEpgProgram("2", "Dokumentär: Naturen", new Date(), new Date(Date.now() + 3600000), "En fascinerande resa genom svenska naturlandskap"),
+    next: createEpgProgram("2", "Kulturnytt", new Date(Date.now() + 3600000), new Date(Date.now() + 5400000))
+  },
+  "3": { 
+    now: createEpgProgram("3", "Nyhetsmorgon", new Date(), new Date(Date.now() + 7200000), "Morgonnyheter med gäster och reportage"),
+    next: createEpgProgram("3", "Kalla Fakta", new Date(Date.now() + 7200000), new Date(Date.now() + 10800000))
+  },
+  "6": { 
+    now: createEpgProgram("6", "CNN Newsroom", new Date(), new Date(Date.now() + 3600000), "Breaking news and analysis from around the world"),
+    next: createEpgProgram("6", "World Sport", new Date(Date.now() + 3600000), new Date(Date.now() + 5400000))
+  },
+  "10": { 
+    now: createEpgProgram("10", "Tour de France", new Date(), new Date(Date.now() + 10800000), "Live coverage of today's stage"),
+    next: createEpgProgram("10", "Tennis Live", new Date(Date.now() + 10800000), new Date(Date.now() + 14400000))
+  },
+};
+
 export default function LiveTVPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { isTVMode } = useTVMode();
   const channelId = searchParams.get("channel");
 
   const [channels, setChannels] = useState<Channel[]>(demoChannels);
@@ -45,13 +85,17 @@ export default function LiveTVPage() {
     navigate(`/live?channel=${channel.id}`);
   }, [navigate]);
 
-  const handleToggleFavorite = useCallback((channel: Channel) => {
+  const handleToggleFavoriteById = useCallback((channelId: string) => {
     setChannels((prev) =>
       prev.map((ch) =>
-        ch.id === channel.id ? { ...ch, isFavorite: !ch.isFavorite } : ch
+        ch.id === channelId ? { ...ch, isFavorite: !ch.isFavorite } : ch
       )
     );
   }, []);
+
+  const handleToggleFavorite = useCallback((channel: Channel) => {
+    handleToggleFavoriteById(channel.id);
+  }, [handleToggleFavoriteById]);
 
   const currentIndex = selectedChannel 
     ? channels.findIndex((ch) => ch.id === selectedChannel.id)
@@ -69,6 +113,70 @@ export default function LiveTVPage() {
     }
   }, [currentIndex, channels, handleSelectChannel]);
 
+  // TV Mode Layout
+  if (isTVMode) {
+    return (
+      <TVLayout>
+        <div className="flex h-full">
+          {/* Channel List - Left */}
+          <div className="w-80 flex-shrink-0 border-r border-border bg-card/30">
+            <TVChannelList
+              channels={channels}
+              selectedChannel={selectedChannel}
+              onSelectChannel={handleSelectChannel}
+              onToggleFavorite={handleToggleFavorite}
+            />
+          </div>
+
+          {/* Player - Center */}
+          <div className="flex-1 flex flex-col p-6">
+            <div className="flex-1 relative">
+              <VideoPlayer
+                channel={selectedChannel}
+                onPrevious={currentIndex > 0 ? handlePrevious : undefined}
+                onNext={currentIndex < channels.length - 1 ? handleNext : undefined}
+                className="h-full"
+              />
+            </div>
+            
+            {/* Channel info bar */}
+            {selectedChannel && (
+              <div className="mt-4 p-4 bg-card/50 rounded-xl border border-border">
+                <div className="flex items-center gap-4">
+                  <span className="text-2xl font-bold text-foreground">{selectedChannel.name}</span>
+                  <span className="text-muted-foreground">{selectedChannel.group}</span>
+                  {selectedChannel.isHD && (
+                    <span className="px-2 py-1 bg-primary/20 text-primary text-sm rounded font-medium">HD</span>
+                  )}
+                </div>
+                {demoEpgData[selectedChannel.id as keyof typeof demoEpgData] && (
+                  <div className="mt-2 text-lg text-muted-foreground">
+                    Nu: {demoEpgData[selectedChannel.id as keyof typeof demoEpgData].now.title}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Now/Next Panel - Right */}
+          <div className="w-96 flex-shrink-0 border-l border-border">
+            {(() => {
+              const epg = selectedChannel ? demoEpgData[selectedChannel.id as keyof typeof demoEpgData] : undefined;
+              return (
+                <TVNowNextPanel
+                  channel={selectedChannel}
+                  currentProgram={epg?.now}
+                  nextProgram={epg?.next}
+                />
+              );
+            })()}
+          </div>
+        </div>
+      </TVLayout>
+    );
+  }
+
+  // Standard Desktop/Mobile Layout
   return (
     <AppLayout>
       <div className="flex flex-col lg:flex-row h-[calc(100vh-3.5rem)] lg:h-screen">
