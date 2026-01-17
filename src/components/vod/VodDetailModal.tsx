@@ -164,7 +164,14 @@ export function VodDetailModal({
           <div className="flex flex-wrap items-center gap-3">
             <Button
               size={isTVMode ? "lg" : "default"}
-              onClick={() => onPlay(movie || (currentSeason?.episodes[0] as Episode))}
+              onClick={() => {
+                if (movie) {
+                  onPlay(movie);
+                } else if (currentSeason?.episodes && currentSeason.episodes.length > 0) {
+                  onPlay(currentSeason.episodes[0]);
+                }
+              }}
+              disabled={!movie && (!currentSeason?.episodes || currentSeason.episodes.length === 0)}
               className="gap-2"
             >
               <Play className="w-5 h-5" fill="currentColor" />

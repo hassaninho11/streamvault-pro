@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, MoreVertical, Trash2, Edit, RefreshCw, CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import { Plus, MoreVertical, Trash2, Edit, RefreshCw, CheckCircle2, XCircle, Loader2, Film, Tv } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,10 +12,14 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { EmptyState } from "@/components/ui/custom";
 import { useProviders, CreateProviderData } from "@/hooks/useProviders";
+import { useVodStore } from "@/data/stores/vodStore";
 
 export default function ProvidersPage() {
   const { providers, loading, addProvider, deleteProvider, refreshProvider } = useProviders();
   const [showAddForm, setShowAddForm] = useState(false);
+  
+  // Get VOD counts from store
+  const { movies, series } = useVodStore();
 
   const handleAddProvider = async (data: ProviderFormData) => {
     const providerData: CreateProviderData = {
@@ -41,6 +45,13 @@ export default function ProvidersPage() {
   const handleRefreshProvider = async (id: string) => {
     await refreshProvider(id);
   };
+  
+  // Get VOD counts per provider
+  const getProviderVodCounts = (providerId: string) => {
+    const providerMovies = movies.filter(m => m.providerId === providerId).length;
+    const providerSeries = series.filter(s => s.providerId === providerId).length;
+    return { movies: providerMovies, series: providerSeries };
+  };
 
   if (showAddForm) {
     return (
@@ -59,10 +70,10 @@ export default function ProvidersPage() {
     <AppLayout>
       <div className="p-6">
         <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold">Providers</h1>
+          <h1 className="text-2xl font-bold">Leverantörer</h1>
           <Button variant="glow" onClick={() => setShowAddForm(true)}>
             <Plus className="w-4 h-4 mr-2" />
-            Add Provider
+            Lägg till
           </Button>
         </div>
 
@@ -73,89 +84,107 @@ export default function ProvidersPage() {
         ) : providers.length === 0 ? (
           <EmptyState
             icon={Plus}
-            title="No providers yet"
-            description="Add your first IPTV provider to start watching"
+            title="Inga leverantörer ännu"
+            description="Lägg till din första IPTV-leverantör för att börja titta"
             action={
               <Button variant="glow" onClick={() => setShowAddForm(true)}>
                 <Plus className="w-4 h-4 mr-2" />
-                Add Provider
+                Lägg till
               </Button>
             }
           />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {providers.map((provider) => (
-              <Card key={provider.id} variant="glass">
-                <CardHeader className="pb-2">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                        {provider.is_active ? (
-                          <CheckCircle2 className="w-5 h-5 text-success" />
-                        ) : (
-                          <XCircle className="w-5 h-5 text-destructive" />
-                        )}
+            {providers.map((provider) => {
+              const vodCounts = getProviderVodCounts(provider.id);
+              
+              return (
+                <Card key={provider.id} variant="glass">
+                  <CardHeader className="pb-2">
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                          {provider.is_active ? (
+                            <CheckCircle2 className="w-5 h-5 text-success" />
+                          ) : (
+                            <XCircle className="w-5 h-5 text-destructive" />
+                          )}
+                        </div>
+                        <div>
+                          <CardTitle className="text-lg">{provider.name}</CardTitle>
+                          <p className="text-xs text-muted-foreground uppercase">
+                            {provider.type}
+                          </p>
+                        </div>
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon">
+                            <MoreVertical className="w-4 h-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleRefreshProvider(provider.id)}>
+                            <RefreshCw className="w-4 h-4 mr-2" />
+                            Uppdatera
+                          </DropdownMenuItem>
+                          <DropdownMenuItem>
+                            <Edit className="w-4 h-4 mr-2" />
+                            Redigera
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="text-destructive"
+                            onClick={() => handleDeleteProvider(provider.id)}
+                          >
+                            <Trash2 className="w-4 h-4 mr-2" />
+                            Ta bort
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-4 gap-3 text-sm">
+                      <div>
+                        <p className="text-muted-foreground text-xs">Live TV</p>
+                        <p className="font-semibold">{provider.channel_count || 0}</p>
                       </div>
                       <div>
-                        <CardTitle className="text-lg">{provider.name}</CardTitle>
-                        <p className="text-xs text-muted-foreground uppercase">
-                          {provider.type}
+                        <p className="text-muted-foreground text-xs flex items-center gap-1">
+                          <Film className="w-3 h-3" />
+                          Filmer
+                        </p>
+                        <p className="font-semibold">{vodCounts.movies}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground text-xs flex items-center gap-1">
+                          <Tv className="w-3 h-3" />
+                          Serier
+                        </p>
+                        <p className="font-semibold">{vodCounts.series}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground text-xs">Synk</p>
+                        <p className="font-semibold text-xs">
+                          {provider.last_sync
+                            ? new Date(provider.last_sync).toLocaleDateString('sv-SE')
+                            : "Aldrig"}
                         </p>
                       </div>
                     </div>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon">
-                          <MoreVertical className="w-4 h-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => handleRefreshProvider(provider.id)}>
-                          <RefreshCw className="w-4 h-4 mr-2" />
-                          Refresh
-                        </DropdownMenuItem>
-                        <DropdownMenuItem>
-                          <Edit className="w-4 h-4 mr-2" />
-                          Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          className="text-destructive"
-                          onClick={() => handleDeleteProvider(provider.id)}
-                        >
-                          <Trash2 className="w-4 h-4 mr-2" />
-                          Delete
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <p className="text-muted-foreground">Channels</p>
-                      <p className="font-semibold">{provider.channel_count}</p>
+                    {/* Security: Never show full URL */}
+                    <div className="mt-3 pt-3 border-t border-border">
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <span className="inline-flex items-center gap-1">
+                          <span className="w-2 h-2 rounded-full bg-success" />
+                          Krypterade inloggningsuppgifter
+                        </span>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-muted-foreground">Last Sync</p>
-                      <p className="font-semibold">
-                        {provider.last_sync
-                          ? new Date(provider.last_sync).toLocaleString()
-                          : "Never"}
-                      </p>
-                    </div>
-                  </div>
-                  {/* Security: Never show full URL */}
-                  <div className="mt-3 pt-3 border-t border-border">
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <span className="inline-flex items-center gap-1">
-                        <span className="w-2 h-2 rounded-full bg-success" />
-                        Credentials encrypted
-                      </span>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         )}
       </div>

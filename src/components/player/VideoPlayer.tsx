@@ -36,6 +36,10 @@ import { toast } from "sonner";
 
 interface VideoPlayerProps {
   channel: Channel | null;
+  /** Direct stream URL for VOD playback */
+  directStreamUrl?: string;
+  /** Title for VOD content */
+  vodTitle?: string;
   onPrevious?: () => void;
   onNext?: () => void;
   onOpenCatchup?: () => void;
@@ -43,7 +47,7 @@ interface VideoPlayerProps {
   className?: string;
 }
 
-export function VideoPlayer({ channel, onPrevious, onNext, onOpenCatchup, onOpenMultiScreen, className }: VideoPlayerProps) {
+export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, onNext, onOpenCatchup, onOpenMultiScreen, className }: VideoPlayerProps) {
   const navigate = useNavigate();
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -111,10 +115,13 @@ export function VideoPlayer({ channel, onPrevious, onNext, onOpenCatchup, onOpen
   }, []);
 
   useEffect(() => {
-    if (!channel || !videoRef.current) return;
+    // Support both channel-based and direct URL playback
+    const streamUrl = directStreamUrl || channel?.streamUrl;
+    
+    if (!streamUrl || !videoRef.current) return;
     
     const video = videoRef.current;
-    let originalUrl = channel.streamUrl;
+    let originalUrl = streamUrl;
     
     if (!originalUrl) {
       setError("No stream URL available");
@@ -351,7 +358,7 @@ export function VideoPlayer({ channel, onPrevious, onNext, onOpenCatchup, onOpen
     return () => {
       destroyHls();
     };
-  }, [channel, destroyHls]);
+  }, [channel, directStreamUrl, destroyHls]);
 
   const handleMouseMove = () => {
     setShowControls(true);
