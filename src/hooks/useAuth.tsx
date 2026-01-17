@@ -1,16 +1,19 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from "react";
 import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import { syncEngine, SyncStrategy } from "@/data/stores/syncEngine";
+import { entitlementsService } from "@/services/EntitlementsService";
 
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
+  isGuest: boolean;
   signUp: (email: string, password: string) => Promise<{ error: Error | null }>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signInWithGoogle: () => Promise<{ error: Error | null }>;
-  signInWithFacebook: () => Promise<{ error: Error | null }>;
-  signOut: () => Promise<void>;
+  signOut: (clearLocalData?: boolean) => Promise<void>;
+  syncData: (strategy: SyncStrategy) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -27,6 +30,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(session);
         setUser(session?.user ?? null);
         setLoading(false);
+
+        // Handle sync when user logs in
+        if (event === 'SIGNED_IN' && session?.user) {
+          // Start auto-sync
+          setTimeout(() => {
+            syncEngine.startAutoSync(session.user.id);
+          }, 0);
+        } else if (event === 'SIGNED_OUT') {
+          syncEngine.stopAutoSync();
+        }
       }
     );
 
@@ -35,9 +48,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
+
+      if (session?.user) {
+        syncEngine.startAutoSync(session.user.id);
+      }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+      syncEngine.stopAutoSync();
+    };
   }, []);
 
   const signUp = async (email: string, password: string) => {
@@ -50,6 +70,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         emailRedirectTo: redirectUrl,
       },
     });
+    
+    // Transfer trial to new account
+    if (!error) {
+      const { data } = await supabase.auth.getUser();
+      if (data.user) {
+        await entitlementsService.transferTrialToAccount(data.user.id);
+      }
+    }
+    
     return { error };
   };
 
@@ -71,19 +100,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error };
   };
 
-  const signInWithFacebook = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "facebook",
-      options: {
-        redirectTo: `${window.location.origin}/`,
-      },
-    });
-    return { error };
+  const signOut = async (clearLocalData = false) => {
+    syncEngine.stopAutoSync();
+    await supabase.auth.signOut();
+    
+    if (clearLocalData) {
+      const { localStore } = await import('@/data/stores/localStore');
+      await localStore.clearAll();
+    }
   };
 
-  const signOut = async () => {
-    await supabase.auth.signOut();
-  };
+  const syncData = useCallback(async (strategy: SyncStrategy) => {
+    if (user) {
+      await syncEngine.sync(user.id, strategy);
+    }
+  }, [user]);
+
+  const isGuest = !user && !loading;
 
   return (
     <AuthContext.Provider
@@ -91,11 +124,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         session,
         loading,
+        isGuest,
         signUp,
         signIn,
         signInWithGoogle,
-        signInWithFacebook,
         signOut,
+        syncData,
       }}
     >
       {children}
