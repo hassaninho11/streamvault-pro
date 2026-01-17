@@ -1,9 +1,10 @@
 /**
  * Movies Page - Netflix-style movie browsing
+ * Loads real VOD data from Xtream providers
  */
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Film } from 'lucide-react';
+import { Film, Loader2 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { TVLayout } from '@/components/tv/TVLayout';
 import { VodGrid } from '@/components/vod/VodGrid';
@@ -11,197 +12,35 @@ import { VodCategoryRow } from '@/components/vod/VodCategoryRow';
 import { VodFilterBar } from '@/components/vod/VodFilterBar';
 import { VodDetailModal } from '@/components/vod/VodDetailModal';
 import { useVodStore } from '@/data/stores/vodStore';
+import { useVodLoader } from '@/hooks/useVodLoader';
 import { useTVMode } from '@/contexts/TVModeContext';
 import { Movie, VodItem, Episode } from '@/types/vod';
 import { cn } from '@/lib/utils';
 
-// Demo movies data
-const demoMovies: Movie[] = [
-  {
-    id: 'movie-1',
-    providerId: 'demo',
-    type: 'movie',
-    title: 'The Matrix',
-    originalTitle: 'The Matrix',
-    year: 1999,
-    genres: ['Action', 'Sci-Fi'],
-    description: 'A computer hacker learns about the true nature of reality and his role in the war against its controllers.',
-    posterUrl: 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=300&h=450&fit=crop',
-    backdropUrl: 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=1920&h=1080&fit=crop',
-    duration: 136,
-    rating: 8.7,
-    streamUrl: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
-    metadataSource: 'provider',
-    subtitlesAvailable: true,
-    audioLanguages: ['en', 'sv'],
-    addedAt: new Date(),
-    updatedAt: new Date(),
-  },
-  {
-    id: 'movie-2',
-    providerId: 'demo',
-    type: 'movie',
-    title: 'Inception',
-    year: 2010,
-    genres: ['Action', 'Sci-Fi', 'Thriller'],
-    description: 'A thief who steals corporate secrets through dream-sharing technology is given the task of planting an idea.',
-    posterUrl: 'https://images.unsplash.com/photo-1440404653325-ab127d49abc1?w=300&h=450&fit=crop',
-    backdropUrl: 'https://images.unsplash.com/photo-1440404653325-ab127d49abc1?w=1920&h=1080&fit=crop',
-    duration: 148,
-    rating: 8.8,
-    streamUrl: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
-    metadataSource: 'provider',
-    subtitlesAvailable: true,
-    audioLanguages: ['en'],
-    addedAt: new Date(Date.now() - 86400000),
-    updatedAt: new Date(),
-  },
-  {
-    id: 'movie-3',
-    providerId: 'demo',
-    type: 'movie',
-    title: 'Interstellar',
-    year: 2014,
-    genres: ['Adventure', 'Drama', 'Sci-Fi'],
-    description: 'A team of explorers travel through a wormhole in space in an attempt to ensure humanity\'s survival.',
-    posterUrl: 'https://images.unsplash.com/photo-1419242902214-272b3f66ee7a?w=300&h=450&fit=crop',
-    backdropUrl: 'https://images.unsplash.com/photo-1419242902214-272b3f66ee7a?w=1920&h=1080&fit=crop',
-    duration: 169,
-    rating: 8.6,
-    streamUrl: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
-    metadataSource: 'provider',
-    subtitlesAvailable: false,
-    audioLanguages: ['en'],
-    addedAt: new Date(Date.now() - 172800000),
-    updatedAt: new Date(),
-  },
-  {
-    id: 'movie-4',
-    providerId: 'demo',
-    type: 'movie',
-    title: 'The Dark Knight',
-    year: 2008,
-    genres: ['Action', 'Crime', 'Drama'],
-    description: 'When the Joker wreaks havoc on Gotham, Batman must accept one of the greatest psychological tests.',
-    posterUrl: 'https://images.unsplash.com/photo-1509347528160-9a9e33742cdb?w=300&h=450&fit=crop',
-    backdropUrl: 'https://images.unsplash.com/photo-1509347528160-9a9e33742cdb?w=1920&h=1080&fit=crop',
-    duration: 152,
-    rating: 9.0,
-    streamUrl: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
-    metadataSource: 'provider',
-    subtitlesAvailable: true,
-    audioLanguages: ['en', 'sv', 'de'],
-    addedAt: new Date(Date.now() - 259200000),
-    updatedAt: new Date(),
-  },
-  {
-    id: 'movie-5',
-    providerId: 'demo',
-    type: 'movie',
-    title: 'Pulp Fiction',
-    year: 1994,
-    genres: ['Crime', 'Drama'],
-    description: 'The lives of two mob hitmen, a boxer, a gangster and his wife intertwine in four tales of violence.',
-    posterUrl: 'https://images.unsplash.com/photo-1594909122845-11baa439b7bf?w=300&h=450&fit=crop',
-    duration: 154,
-    rating: 8.9,
-    streamUrl: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
-    metadataSource: 'provider',
-    subtitlesAvailable: true,
-    audioLanguages: ['en'],
-    addedAt: new Date(Date.now() - 345600000),
-    updatedAt: new Date(),
-  },
-  {
-    id: 'movie-6',
-    providerId: 'demo',
-    type: 'movie',
-    title: 'Fight Club',
-    year: 1999,
-    genres: ['Drama'],
-    description: 'An insomniac office worker and a devil-may-care soap maker form an underground fight club.',
-    posterUrl: 'https://images.unsplash.com/photo-1549719386-74dfcbf7dbed?w=300&h=450&fit=crop',
-    duration: 139,
-    rating: 8.8,
-    streamUrl: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
-    metadataSource: 'provider',
-    subtitlesAvailable: false,
-    audioLanguages: ['en'],
-    addedAt: new Date(Date.now() - 432000000),
-    updatedAt: new Date(),
-  },
-];
-
 export default function MoviesPage() {
   const { isTVMode } = useTVMode();
   const navigate = useNavigate();
+  const { isLoading: vodLoading, movieCount } = useVodLoader();
+  
   const { 
+    movies,
     currentFilter, 
     setFilter, 
     clearFilter, 
     toggleFavorite,
     getContinueWatching,
-    getFavorites,
+    getFilteredMovies,
+    getAllGenres,
   } = useVodStore();
   
   const [selectedMovie, setSelectedMovie] = useState<Movie | null>(null);
   const [viewMode, setViewMode] = useState<'categories' | 'grid'>('categories');
   
-  // Use demo movies (in real app, this would come from store/API)
-  const movies = demoMovies;
+  // Get all genres from actual movies
+  const allGenres = useMemo(() => getAllGenres(), [movies]);
   
-  // Get all genres
-  const allGenres = useMemo(() => {
-    const genres = new Set<string>();
-    movies.forEach(m => m.genres.forEach(g => genres.add(g)));
-    return Array.from(genres).sort();
-  }, [movies]);
-  
-  // Filter movies
-  const filteredMovies = useMemo(() => {
-    let filtered = [...movies];
-    
-    if (currentFilter.searchQuery) {
-      const query = currentFilter.searchQuery.toLowerCase();
-      filtered = filtered.filter(m => 
-        m.title.toLowerCase().includes(query) ||
-        m.originalTitle?.toLowerCase().includes(query)
-      );
-    }
-    
-    if (currentFilter.genres?.length) {
-      filtered = filtered.filter(m => 
-        m.genres.some(g => currentFilter.genres!.includes(g))
-      );
-    }
-    
-    if (currentFilter.favoritesOnly) {
-      filtered = filtered.filter(m => m.isFavorite);
-    }
-    
-    // Sort
-    const { sortBy = 'addedAt', sortOrder = 'desc' } = currentFilter;
-    filtered.sort((a, b) => {
-      let comparison = 0;
-      switch (sortBy) {
-        case 'title':
-          comparison = a.title.localeCompare(b.title);
-          break;
-        case 'year':
-          comparison = (a.year || 0) - (b.year || 0);
-          break;
-        case 'rating':
-          comparison = (a.rating || 0) - (b.rating || 0);
-          break;
-        case 'addedAt':
-          comparison = a.addedAt.getTime() - b.addedAt.getTime();
-          break;
-      }
-      return sortOrder === 'desc' ? -comparison : comparison;
-    });
-    
-    return filtered;
-  }, [movies, currentFilter]);
+  // Get filtered movies
+  const filteredMovies = useMemo(() => getFilteredMovies(), [movies, currentFilter]);
   
   // Categories for browse view
   const categories = useMemo(() => {
@@ -219,30 +58,41 @@ export default function MoviesPage() {
     }
     
     // Recently added
-    cats.push({
-      id: 'recent',
-      name: 'Nyligen tillagda',
-      type: 'recently_added' as const,
-      items: [...movies].sort((a, b) => b.addedAt.getTime() - a.addedAt.getTime()).slice(0, 10),
-    });
+    const recentMovies = [...movies]
+      .sort((a, b) => b.addedAt.getTime() - a.addedAt.getTime())
+      .slice(0, 20);
+    if (recentMovies.length > 0) {
+      cats.push({
+        id: 'recent',
+        name: 'Nyligen tillagda',
+        type: 'recently_added' as const,
+        items: recentMovies,
+      });
+    }
     
     // Top rated
-    cats.push({
-      id: 'top_rated',
-      name: 'Högst betyg',
-      type: 'collection' as const,
-      items: [...movies].sort((a, b) => (b.rating || 0) - (a.rating || 0)).slice(0, 10),
-    });
+    const topRated = [...movies]
+      .filter(m => m.rating && m.rating > 0)
+      .sort((a, b) => (b.rating || 0) - (a.rating || 0))
+      .slice(0, 20);
+    if (topRated.length > 0) {
+      cats.push({
+        id: 'top_rated',
+        name: 'Högst betyg',
+        type: 'collection' as const,
+        items: topRated,
+      });
+    }
     
-    // By genre
-    allGenres.slice(0, 4).forEach(genre => {
+    // By genre (top 6 genres)
+    allGenres.slice(0, 6).forEach(genre => {
       const genreMovies = movies.filter(m => m.genres.includes(genre));
       if (genreMovies.length > 0) {
         cats.push({
           id: `genre-${genre}`,
           name: genre,
           type: 'genre' as const,
-          items: genreMovies,
+          items: genreMovies.slice(0, 20),
         });
       }
     });
@@ -256,8 +106,10 @@ export default function MoviesPage() {
   
   const handlePlay = useCallback((item: VodItem | Episode) => {
     setSelectedMovie(null);
-    navigate(`/player?type=movie&id=${item.id}`);
-  }, [navigate]);
+    // In real implementation, navigate to player with stream URL
+    console.log('Playing movie:', item.title, item.streamUrl);
+    // navigate(`/player?type=movie&id=${item.id}`);
+  }, []);
   
   const handleFilterChange = useCallback((filter: Partial<typeof currentFilter>) => {
     setFilter(filter);
@@ -286,47 +138,78 @@ export default function MoviesPage() {
         )}>
           Filmer
         </h1>
+        {movies.length > 0 && (
+          <span className="text-muted-foreground text-sm">
+            ({movies.length} filmer)
+          </span>
+        )}
       </div>
       
-      {/* Filter bar */}
-      <VodFilterBar
-        filter={currentFilter}
-        availableGenres={allGenres}
-        onFilterChange={handleFilterChange}
-        onClearFilters={() => {
-          clearFilter();
-          setViewMode('categories');
-        }}
-        totalCount={filteredMovies.length}
-        className="mb-6"
-      />
+      {/* Loading state */}
+      {vodLoading && movies.length === 0 && (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <Loader2 className="w-12 h-12 animate-spin text-primary mx-auto mb-4" />
+            <p className="text-muted-foreground">Laddar filmer...</p>
+          </div>
+        </div>
+      )}
       
-      {/* Content */}
-      <div className="flex-1 overflow-hidden">
-        {viewMode === 'categories' && !currentFilter.searchQuery ? (
-          // Category rows view
-          <div className="space-y-8 overflow-y-auto h-full pb-8">
-            {categories.map(category => (
-              <VodCategoryRow
-                key={category.id}
-                category={category}
+      {/* Empty state */}
+      {!vodLoading && movies.length === 0 && (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <Film className="w-16 h-16 text-muted-foreground/50 mx-auto mb-4" />
+            <h2 className="text-xl font-semibold mb-2">Inga filmer hittades</h2>
+            <p className="text-muted-foreground max-w-md">
+              Lägg till en Xtream Codes-provider för att få tillgång till filmer och serier.
+            </p>
+          </div>
+        </div>
+      )}
+      
+      {/* Content when we have movies */}
+      {movies.length > 0 && (
+        <>
+          {/* Filter bar */}
+          <VodFilterBar
+            filter={currentFilter}
+            availableGenres={allGenres}
+            onFilterChange={handleFilterChange}
+            onClearFilters={() => {
+              clearFilter();
+              setViewMode('categories');
+            }}
+            totalCount={filteredMovies.length}
+            className="mb-6"
+          />
+          
+          {/* Content */}
+          <div className="flex-1 overflow-hidden">
+            {viewMode === 'categories' && !currentFilter.searchQuery ? (
+              <div className="space-y-8 overflow-y-auto h-full pb-8">
+                {categories.map(category => (
+                  <VodCategoryRow
+                    key={category.id}
+                    category={category}
+                    onItemClick={handleItemClick}
+                    onItemPlay={handlePlay}
+                    onItemInfo={handleItemClick}
+                  />
+                ))}
+              </div>
+            ) : (
+              <VodGrid
+                items={filteredMovies}
                 onItemClick={handleItemClick}
                 onItemPlay={handlePlay}
                 onItemInfo={handleItemClick}
+                onToggleFavorite={(item) => toggleFavorite(item.id)}
               />
-            ))}
+            )}
           </div>
-        ) : (
-          // Grid view (filtered)
-          <VodGrid
-            items={filteredMovies}
-            onItemClick={handleItemClick}
-            onItemPlay={handlePlay}
-            onItemInfo={handleItemClick}
-            onToggleFavorite={(item) => toggleFavorite(item.id)}
-          />
-        )}
-      </div>
+        </>
+      )}
       
       {/* Detail modal */}
       <VodDetailModal
