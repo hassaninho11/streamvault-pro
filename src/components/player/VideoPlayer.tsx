@@ -189,8 +189,21 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
       
       // Determine which URL to use based on preflight result
       let playbackUrl = originalUrl;
+      let usingProxy = false;
       
-      if (preflight.recommendedStrategy === 'upgraded_https' && preflight.resolvedUrl) {
+      // For VOD content (non-HLS like MKV, MP4), always use proxy first on HTTPS pages
+      // This is critical because direct playback will always fail due to CORS/mixed content
+      const isHttpOnHttps = originalUrl.startsWith('http://') && window.location.protocol === 'https:';
+      const needsProxyForVod = isVod && !isHls && isHttpOnHttps;
+      
+      if (needsProxyForVod) {
+        const proxyUrl = buildProxyUrl(originalUrl);
+        if (proxyUrl) {
+          playbackUrl = proxyUrl;
+          usingProxy = true;
+          console.log('[VideoPlayer] VOD content on HTTPS - using proxy as primary');
+        }
+      } else if (preflight.recommendedStrategy === 'upgraded_https' && preflight.resolvedUrl) {
         // HTTPS upgrade succeeded - use the upgraded URL
         playbackUrl = preflight.resolvedUrl;
         console.log('[VideoPlayer] Using HTTPS-upgraded URL');
@@ -199,7 +212,7 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
         const proxyUrl = preflight.resolvedUrl || buildProxyUrl(originalUrl);
         if (proxyUrl) {
           playbackUrl = proxyUrl;
-          setIsUsingProxy(true);
+          usingProxy = true;
           console.log('[VideoPlayer] Using proxy URL');
         } else if (preflight.isMixedContentBlocked) {
           // No proxy available, show blocked screen
@@ -213,6 +226,8 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
         setShowBlockedScreen(true);
         return;
       }
+      
+      setIsUsingProxy(usingProxy);
       
       // Load custom proxy URL from settings if user has one configured
       try {
@@ -252,7 +267,7 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
       // Add original without .m3u8 as fallback for Xtream URLs
       if (isXtreamStyle && originalUrl.endsWith('.m3u8')) {
         const withoutExt = originalUrl.replace('.m3u8', '');
-        if (isUsingProxy) {
+        if (usingProxy) {
           const fallbackProxy = buildProxyUrl(withoutExt);
           if (fallbackProxy) urlsToTry.push(fallbackProxy);
         } else {
@@ -260,9 +275,9 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
         }
       }
       
-      // For VOD content (non-HLS), always add proxy URL as fallback if not already using it
-      // This handles MKV, MP4, and other direct video formats that need CORS bypass
-      if (!isHls && !isUsingProxy && directStreamUrl) {
+      // For VOD content (non-HLS), add proxy URL as fallback if not already using it
+      // This handles cases where direct playback was tried first
+      if (!isHls && !usingProxy && directStreamUrl) {
         const proxyFallback = buildProxyUrl(originalUrl);
         if (proxyFallback && !urlsToTry.includes(proxyFallback)) {
           urlsToTry.push(proxyFallback);
@@ -273,7 +288,9 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
       let currentUrlIndex = 0;
       
       const showFinalError = () => {
-        if (preflight.isMixedContentBlocked) {
+        // For VOD content that failed, always show the blocked screen with options
+        // This gives users alternatives like VLC or external player
+        if (preflight.isMixedContentBlocked || isVod) {
           setIsBuffering(false);
           setShowBlockedScreen(true);
           return;
