@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Search as SearchIcon, Tv, Calendar, X, Loader2 } from "lucide-react";
+import { Search as SearchIcon, Tv, Film, Clapperboard, X, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Input } from "@/components/ui/input";
@@ -9,6 +9,7 @@ import { ChannelLogo, EmptyState } from "@/components/ui/custom";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useChannelLoader } from "@/hooks/useChannelLoader";
 import { useChannelStore } from "@/data/stores/channelStore";
+import { useVodStore } from "@/data/stores/vodStore";
 import { searchChannels } from "@/core/indexing/channelIndex";
 
 export default function SearchPage() {
@@ -17,6 +18,8 @@ export default function SearchPage() {
   const [activeTab, setActiveTab] = useState("channels");
   const { isLoading, channelCount } = useChannelLoader();
   const index = useChannelStore((state) => state.index);
+  const movies = useVodStore((state) => state.movies);
+  const series = useVodStore((state) => state.series);
 
   // Search channels using indexed search
   const filteredChannels = useMemo(() => {
@@ -28,8 +31,33 @@ export default function SearchPage() {
       .filter(Boolean);
   }, [query, index]);
 
-  // TODO: Implement EPG program search when EPG is loaded
-  const filteredPrograms: Array<{ id: string; title: string; channel: string; time: string }> = [];
+  // Search movies
+  const filteredMovies = useMemo(() => {
+    if (!query || query.length < 2) return [];
+    const lowerQuery = query.toLowerCase();
+    return movies
+      .filter(m => 
+        m.title.toLowerCase().includes(lowerQuery) ||
+        m.originalTitle?.toLowerCase().includes(lowerQuery) ||
+        m.description?.toLowerCase().includes(lowerQuery)
+      )
+      .slice(0, 50);
+  }, [query, movies]);
+
+  // Search series
+  const filteredSeries = useMemo(() => {
+    if (!query || query.length < 2) return [];
+    const lowerQuery = query.toLowerCase();
+    return series
+      .filter(s => 
+        s.title.toLowerCase().includes(lowerQuery) ||
+        s.originalTitle?.toLowerCase().includes(lowerQuery) ||
+        s.description?.toLowerCase().includes(lowerQuery)
+      )
+      .slice(0, 50);
+  }, [query, series]);
+
+  const totalResults = filteredChannels.length + filteredMovies.length + filteredSeries.length;
 
   if (isLoading && channelCount === 0) {
     return (
@@ -47,11 +75,11 @@ export default function SearchPage() {
       <div className="p-6 max-w-4xl mx-auto">
         {/* Search Header */}
         <div className="mb-8">
-          <h1 className="text-2xl font-bold mb-4">Search</h1>
+          <h1 className="text-2xl font-bold mb-4">Sök</h1>
           <div className="relative">
             <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
             <Input
-              placeholder="Search channels, programs..."
+              placeholder="Sök kanaler, filmer, serier..."
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               variant="glass"
@@ -70,27 +98,32 @@ export default function SearchPage() {
               </Button>
             )}
           </div>
-          {channelCount > 0 && (
-            <p className="text-sm text-muted-foreground mt-2">
-              Search across {channelCount.toLocaleString()} channels
-            </p>
-          )}
+          <div className="flex gap-4 text-sm text-muted-foreground mt-2">
+            <span>{channelCount.toLocaleString()} kanaler</span>
+            <span>{movies.length.toLocaleString()} filmer</span>
+            <span>{series.length.toLocaleString()} serier</span>
+          </div>
         </div>
 
         {/* Results */}
-        {query ? (
+        {query && query.length >= 2 ? (
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList className="mb-6">
               <TabsTrigger value="channels" className="gap-2">
                 <Tv className="w-4 h-4" />
-                Channels ({filteredChannels.length})
+                Kanaler ({filteredChannels.length})
               </TabsTrigger>
-              <TabsTrigger value="programs" className="gap-2">
-                <Calendar className="w-4 h-4" />
-                Programs ({filteredPrograms.length})
+              <TabsTrigger value="movies" className="gap-2">
+                <Film className="w-4 h-4" />
+                Filmer ({filteredMovies.length})
+              </TabsTrigger>
+              <TabsTrigger value="series" className="gap-2">
+                <Clapperboard className="w-4 h-4" />
+                Serier ({filteredSeries.length})
               </TabsTrigger>
             </TabsList>
 
+            {/* Channels Tab */}
             <TabsContent value="channels">
               {filteredChannels.length > 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -123,61 +156,123 @@ export default function SearchPage() {
               ) : (
                 <EmptyState
                   icon={Tv}
-                  title="No channels found"
-                  description={`No channels matching "${query}"`}
+                  title="Inga kanaler hittades"
+                  description={`Inga kanaler matchar "${query}"`}
                 />
               )}
             </TabsContent>
 
-            <TabsContent value="programs">
-              {filteredPrograms.length > 0 ? (
-                <div className="space-y-3">
-                  {filteredPrograms.map((program) => (
+            {/* Movies Tab */}
+            <TabsContent value="movies">
+              {filteredMovies.length > 0 ? (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                  {filteredMovies.map((movie) => (
                     <Card
-                      key={program.id}
+                      key={movie.id}
                       variant="interactive"
-                      className="p-4"
+                      className="overflow-hidden cursor-pointer"
+                      onClick={() => navigate(`/movies?play=${movie.id}`)}
                     >
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <h3 className="font-medium">{program.title}</h3>
-                          <p className="text-sm text-muted-foreground">
-                            {program.channel}
-                          </p>
-                        </div>
-                        <span className="text-sm text-muted-foreground">
-                          {program.time}
-                        </span>
+                      <div className="aspect-[2/3] relative">
+                        {movie.posterUrl ? (
+                          <img
+                            src={movie.posterUrl}
+                            alt={movie.title}
+                            className="w-full h-full object-cover"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <div className="w-full h-full bg-muted flex items-center justify-center">
+                            <Film className="w-8 h-8 text-muted-foreground" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="p-3">
+                        <h3 className="font-medium text-sm truncate">{movie.title}</h3>
+                        <p className="text-xs text-muted-foreground">
+                          {movie.year} {movie.rating && `• ★ ${movie.rating.toFixed(1)}`}
+                        </p>
                       </div>
                     </Card>
                   ))}
                 </div>
               ) : (
                 <EmptyState
-                  icon={Calendar}
-                  title="No programs found"
-                  description={`No programs matching "${query}". EPG data may not be loaded yet.`}
+                  icon={Film}
+                  title="Inga filmer hittades"
+                  description={`Inga filmer matchar "${query}"`}
+                />
+              )}
+            </TabsContent>
+
+            {/* Series Tab */}
+            <TabsContent value="series">
+              {filteredSeries.length > 0 ? (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                  {filteredSeries.map((show) => (
+                    <Card
+                      key={show.id}
+                      variant="interactive"
+                      className="overflow-hidden cursor-pointer"
+                      onClick={() => navigate(`/series/${show.id}`)}
+                    >
+                      <div className="aspect-[2/3] relative">
+                        {show.posterUrl ? (
+                          <img
+                            src={show.posterUrl}
+                            alt={show.title}
+                            className="w-full h-full object-cover"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <div className="w-full h-full bg-muted flex items-center justify-center">
+                            <Clapperboard className="w-8 h-8 text-muted-foreground" />
+                          </div>
+                        )}
+                      </div>
+                      <div className="p-3">
+                        <h3 className="font-medium text-sm truncate">{show.title}</h3>
+                        <p className="text-xs text-muted-foreground">
+                          {show.year} {show.totalSeasons && `• ${show.totalSeasons} säsonger`}
+                        </p>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              ) : (
+                <EmptyState
+                  icon={Clapperboard}
+                  title="Inga serier hittades"
+                  description={`Inga serier matchar "${query}"`}
                 />
               )}
             </TabsContent>
           </Tabs>
-        ) : channelCount === 0 ? (
+        ) : query.length > 0 && query.length < 2 ? (
+          <div className="text-center py-12">
+            <SearchIcon className="w-16 h-16 mx-auto mb-4 text-muted-foreground/30" />
+            <h2 className="text-xl font-semibold mb-2">Skriv minst 2 tecken</h2>
+            <p className="text-muted-foreground">
+              Ange minst två tecken för att söka
+            </p>
+          </div>
+        ) : channelCount === 0 && movies.length === 0 && series.length === 0 ? (
           <div className="text-center py-12">
             <Tv className="w-16 h-16 mx-auto mb-4 text-muted-foreground/30" />
-            <h2 className="text-xl font-semibold mb-2">No channels to search</h2>
+            <h2 className="text-xl font-semibold mb-2">Inget innehåll att söka</h2>
             <p className="text-muted-foreground mb-4">
-              Add a provider to start searching channels
+              Lägg till en provider för att börja söka
             </p>
             <Button variant="outline" onClick={() => navigate("/providers")}>
-              Add Provider
+              Lägg till provider
             </Button>
           </div>
         ) : (
           <div className="text-center py-12">
             <SearchIcon className="w-16 h-16 mx-auto mb-4 text-muted-foreground/30" />
-            <h2 className="text-xl font-semibold mb-2">Search your content</h2>
+            <h2 className="text-xl font-semibold mb-2">Sök ditt innehåll</h2>
             <p className="text-muted-foreground">
-              Find channels and programs across all your providers
+              Hitta kanaler, filmer och serier från alla dina providers
             </p>
           </div>
         )}
