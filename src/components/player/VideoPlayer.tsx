@@ -134,24 +134,35 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
     // Support both channel-based and direct URL playback
     const streamUrl = directStreamUrl || channel?.streamUrl;
     
-    if (!streamUrl || !videoRef.current) return;
-    
     const video = videoRef.current;
-    let originalUrl = streamUrl;
-    let isCancelled = false;
+    if (!video) return;
     
-    if (!originalUrl) {
-      setError("No stream URL available");
+    // Always clean up previous playback first
+    destroyHls();
+    video.pause();
+    video.removeAttribute('src');
+    video.load();
+    
+    if (!streamUrl) {
+      setError(null);
+      setIsBuffering(false);
       return;
     }
     
-    // Reset states
+    let originalUrl = streamUrl;
+    let isCancelled = false;
+    
+    // Reset all states for new playback
     setError(null);
     setIsBuffering(true);
     setShowBlockedScreen(false);
     setIsUsingProxy(false);
-    destroyHls();
     setQualityLevels([]);
+    setIsPlaying(false);
+    setPreflightResult(null);
+    
+    console.log(`[VideoPlayer] === NEW PLAYBACK REQUEST ===`);
+    console.log(`[VideoPlayer] URL: ${originalUrl.substring(0, 100)}...`);
     
     // For Xtream-style URLs without extension, try adding .m3u8 for HLS
     const isXtreamStyle = /\/live\/[^/]+\/[^/]+\/\d+$/.test(originalUrl) || 
@@ -165,7 +176,7 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
     const isHls = isHlsUrl(originalUrl);
     const isVod = !!directStreamUrl;
     
-    console.log(`[VideoPlayer] Starting playback - isHls: ${isHls}, isVod: ${isVod}, url: ${originalUrl.substring(0, 60)}...`);
+    console.log(`[VideoPlayer] Starting playback - isHls: ${isHls}, isVod: ${isVod}`);
     
     // Async preflight and playback setup
     const startPlayback = async () => {
@@ -359,25 +370,29 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
       };
       
       const tryDirectPlayback = (url: string, onFail: () => void) => {
-        console.log('[VideoPlayer] Trying direct playback');
-        video.src = url;
+        console.log('[VideoPlayer] Trying direct playback:', url.substring(0, 80) + '...');
         
+        // Remove any existing listeners first
         const handleCanPlay = () => {
           console.log('[VideoPlayer] Direct playback ready');
+          video.removeEventListener('error', handleError);
           setIsBuffering(false);
           video.play().catch((e) => {
             console.warn('[VideoPlayer] Direct autoplay blocked:', e);
           });
         };
         
-        const handleError = () => {
-          console.error('[VideoPlayer] Direct playback failed');
+        const handleError = (e: Event) => {
+          video.removeEventListener('canplay', handleCanPlay);
+          const videoError = (e.target as HTMLVideoElement)?.error;
+          console.error('[VideoPlayer] Direct playback failed:', videoError?.message || 'Unknown error', videoError?.code);
           onFail();
         };
         
         video.addEventListener('canplay', handleCanPlay, { once: true });
         video.addEventListener('error', handleError, { once: true });
         
+        video.src = url;
         video.load();
       };
       
@@ -412,10 +427,17 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
     startPlayback();
     
     return () => {
+      console.log('[VideoPlayer] Cleanup - cancelling playback');
       isCancelled = true;
       destroyHls();
+      // Clean up video element
+      if (video) {
+        video.pause();
+        video.removeAttribute('src');
+        video.load();
+      }
     };
-  }, [channel, directStreamUrl, destroyHls]);
+  }, [channel?.id, channel?.streamUrl, directStreamUrl, destroyHls]);
 
 
 
@@ -694,10 +716,7 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
         onPause={() => setIsPlaying(false)}
         onWaiting={() => setIsBuffering(true)}
         onCanPlay={() => setIsBuffering(false)}
-        onError={() => {
-          setError("Stream unavailable");
-          setIsBuffering(false);
-        }}
+        // Note: onError removed - we handle errors in useEffect with fallback logic
       />
 
       {/* Buffering Overlay */}
