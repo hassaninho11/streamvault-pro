@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { Plus, Link, Upload, Server, Globe, Check, AlertCircle, Loader2 } from "lucide-react";
+import { Plus, Link, Upload, Server, Globe, Check, AlertCircle, Loader2, Tv, Film, Clapperboard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +10,12 @@ import { supabase } from "@/integrations/supabase/client";
 
 type ProviderType = "m3u-url" | "m3u-file" | "xtream";
 type ConnectionStatus = "idle" | "testing" | "success" | "error";
+
+interface ContentCounts {
+  live: number;
+  movies: number;
+  series: number;
+}
 
 interface AddProviderFormProps {
   onSubmit: (data: ProviderFormData) => void;
@@ -36,12 +42,14 @@ export function AddProviderForm({ onSubmit, onCancel }: AddProviderFormProps) {
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("idle");
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [successMessage, setSuccessMessage] = useState<string>("");
+  const [contentCounts, setContentCounts] = useState<ContentCounts | null>(null);
 
   const updateForm = useCallback((updates: Partial<ProviderFormData>) => {
     setFormData((prev) => ({ ...prev, ...updates }));
     setConnectionStatus("idle");
     setErrorMessage("");
     setSuccessMessage("");
+    setContentCounts(null);
   }, []);
 
   const handleTabChange = (value: string) => {
@@ -53,18 +61,68 @@ export function AddProviderForm({ onSubmit, onCancel }: AddProviderFormProps) {
     setConnectionStatus("testing");
     setErrorMessage("");
     setSuccessMessage("");
+    setContentCounts(null);
 
     try {
-      let testUrl = '';
+      // For Xtream, test with API calls to get counts
+      if (activeTab === "xtream" && formData.xtreamHost && formData.xtreamUser && formData.xtreamPass) {
+        const cleanHost = formData.xtreamHost.replace(/\/+$/, '');
+        
+        // Test authentication and get live channels count
+        const [liveResult, vodResult, seriesResult] = await Promise.all([
+          supabase.functions.invoke('playlist-proxy', {
+            body: { 
+              host: cleanHost, 
+              username: formData.xtreamUser, 
+              password: formData.xtreamPass, 
+              type: 'xtream_live' 
+            }
+          }),
+          supabase.functions.invoke('playlist-proxy', {
+            body: { 
+              host: cleanHost, 
+              username: formData.xtreamUser, 
+              password: formData.xtreamPass, 
+              type: 'xtream_vod' 
+            }
+          }),
+          supabase.functions.invoke('playlist-proxy', {
+            body: { 
+              host: cleanHost, 
+              username: formData.xtreamUser, 
+              password: formData.xtreamPass, 
+              type: 'xtream_series' 
+            }
+          }),
+        ]);
+
+        // Check for errors
+        if (liveResult.error) {
+          throw new Error(liveResult.error.message || 'Connection failed');
+        }
+        if (!liveResult.data?.success) {
+          throw new Error(liveResult.data?.error || 'Connection failed');
+        }
+
+        const counts: ContentCounts = {
+          live: Array.isArray(liveResult.data?.data) ? liveResult.data.data.length : 0,
+          movies: Array.isArray(vodResult.data?.data) ? vodResult.data.data.length : 0,
+          series: Array.isArray(seriesResult.data?.data) ? seriesResult.data.data.length : 0,
+        };
+
+        setContentCounts(counts);
+        setConnectionStatus("success");
+        setSuccessMessage("Anslutning lyckades!");
+        return;
+      }
       
+      // For M3U URL
+      let testUrl = '';
       if (activeTab === "m3u-url" && formData.m3uUrl) {
         testUrl = formData.m3uUrl;
-      } else if (activeTab === "xtream" && formData.xtreamHost && formData.xtreamUser && formData.xtreamPass) {
-        const cleanHost = formData.xtreamHost.replace(/\/+$/, '');
-        testUrl = `${cleanHost}/get.php?username=${encodeURIComponent(formData.xtreamUser)}&password=${encodeURIComponent(formData.xtreamPass)}&type=m3u_plus&output=ts`;
       } else {
         setConnectionStatus("error");
-        setErrorMessage("Please fill in all required fields");
+        setErrorMessage("Fyll i alla obligatoriska fält");
         return;
       }
 
@@ -139,8 +197,8 @@ export function AddProviderForm({ onSubmit, onCancel }: AddProviderFormProps) {
             // Allow saving anyway with a warning
             setConnectionStatus("error");
             setErrorMessage(
-              'Cannot verify connection: Your browser blocks HTTP requests from secure pages. ' +
-              'You can still save this provider - streams may work with an external player or custom proxy.'
+              'Kan inte verifiera anslutningen: Din webbläsare blockerar HTTP-förfrågningar från säkra sidor. ' +
+              'Du kan fortfarande spara denna provider.'
             );
             // Mark as saveable despite error
             setSuccessMessage('_allow_save_');
@@ -149,29 +207,26 @@ export function AddProviderForm({ onSubmit, onCancel }: AddProviderFormProps) {
           
           // Generic error
           throw new Error(
-            'Could not connect to the playlist server. ' +
-            'The server may be temporarily unavailable or blocking connections.'
+            'Kunde inte ansluta till servern. ' +
+            'Servern kan vara tillfälligt otillgänglig.'
           );
         }
       }
 
       if (data?.isValidPlaylist) {
         setConnectionStatus("success");
-        setSuccessMessage(
-          data.channelCount > 0 
-            ? `Found ${data.channelCount.toLocaleString()} channels${data.directFetch ? ' (direct)' : ''}` 
-            : "Connection successful!"
-        );
+        setContentCounts({ live: data.channelCount || 0, movies: 0, series: 0 });
+        setSuccessMessage("Anslutning lyckades!");
       } else {
         setConnectionStatus("error");
-        setErrorMessage("Response doesn't appear to be a valid M3U playlist");
+        setErrorMessage("Svaret verkar inte vara en giltig M3U-spellista");
       }
     } catch (error) {
       setConnectionStatus("error");
       if (error instanceof Error) {
         setErrorMessage(error.message);
       } else {
-        setErrorMessage("Connection failed");
+        setErrorMessage("Anslutningen misslyckades");
       }
     }
   };
@@ -346,29 +401,56 @@ export function AddProviderForm({ onSubmit, onCancel }: AddProviderFormProps) {
           {connectionStatus !== "idle" && (
             <div
               className={cn(
-                "flex items-center gap-2 p-3 rounded-lg",
+                "p-4 rounded-lg space-y-3",
                 connectionStatus === "testing" && "bg-muted",
-                connectionStatus === "success" && "bg-success/10 text-success",
-                connectionStatus === "error" && "bg-destructive/10 text-destructive"
+                connectionStatus === "success" && "bg-success/10",
+                connectionStatus === "error" && "bg-destructive/10"
               )}
             >
-              {connectionStatus === "testing" && (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span className="text-sm">Testing connection...</span>
-                </>
-              )}
-              {connectionStatus === "success" && (
-                <>
-                  <Check className="w-4 h-4" />
-                  <span className="text-sm">{successMessage || "Connection successful!"}</span>
-                </>
-              )}
-              {connectionStatus === "error" && (
-                <>
-                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                  <span className="text-sm">{errorMessage}</span>
-                </>
+              <div className={cn(
+                "flex items-center gap-2",
+                connectionStatus === "success" && "text-success",
+                connectionStatus === "error" && "text-destructive"
+              )}>
+                {connectionStatus === "testing" && (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span className="text-sm">Testar anslutning...</span>
+                  </>
+                )}
+                {connectionStatus === "success" && (
+                  <>
+                    <Check className="w-4 h-4" />
+                    <span className="text-sm">{successMessage}</span>
+                  </>
+                )}
+                {connectionStatus === "error" && (
+                  <>
+                    <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                    <span className="text-sm">{errorMessage}</span>
+                  </>
+                )}
+              </div>
+              
+              {/* Content counts breakdown */}
+              {contentCounts && (connectionStatus === "success") && (
+                <div className="grid grid-cols-3 gap-3 pt-2 border-t border-border/50">
+                  <div className="flex items-center gap-2 text-sm">
+                    <Tv className="w-4 h-4 text-blue-500" />
+                    <span className="text-muted-foreground">Live:</span>
+                    <span className="font-semibold">{contentCounts.live.toLocaleString()}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm">
+                    <Film className="w-4 h-4 text-purple-500" />
+                    <span className="text-muted-foreground">Filmer:</span>
+                    <span className="font-semibold">{contentCounts.movies.toLocaleString()}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm">
+                    <Clapperboard className="w-4 h-4 text-orange-500" />
+                    <span className="text-muted-foreground">Serier:</span>
+                    <span className="font-semibold">{contentCounts.series.toLocaleString()}</span>
+                  </div>
+                </div>
               )}
             </div>
           )}
