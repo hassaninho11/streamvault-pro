@@ -741,8 +741,8 @@ export default function SettingsPage() {
                   </div>
                   <Separator />
                   <div className="flex gap-2">
-                    <Button variant="outline" size="sm">Privacy Policy</Button>
-                    <Button variant="outline" size="sm">Terms of Service</Button>
+                    <Button variant="outline" size="sm" onClick={() => navigate('/privacy')}>Privacy Policy</Button>
+                    <Button variant="outline" size="sm" onClick={() => navigate('/terms')}>Terms of Service</Button>
                   </div>
                 </CardContent>
               </Card>

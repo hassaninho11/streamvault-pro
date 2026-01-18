@@ -29,13 +29,13 @@ interface AppLayoutProps {
   children: ReactNode;
 }
 
+// Navigation items - Sök is global (top bar only), not in nav
 const navItems = [
   { to: "/", icon: Home, label: "Hem" },
   { to: "/live", icon: Tv, label: "Live TV" },
   { to: "/movies", icon: Film, label: "Filmer" },
   { to: "/series", icon: MonitorPlay, label: "Serier" },
   { to: "/epg", icon: Calendar, label: "Guide" },
-  { to: "/search", icon: Search, label: "Sök" },
   { to: "/favorites", icon: Star, label: "Favoriter" },
   { to: "/recent", icon: Clock, label: "Senaste" },
 ];

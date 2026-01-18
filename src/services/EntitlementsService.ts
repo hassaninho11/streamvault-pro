@@ -1,6 +1,9 @@
 /**
  * EntitlementsService - Centralized entitlements management
  * Abstracts payment providers (Stripe, IAP) from UI
+ * 
+ * IMPORTANT: Premium/Trial works WITHOUT login
+ * Login is ONLY for syncing playlists between devices
  */
 
 import { localStore, LocalEntitlement } from '@/data/stores/localStore';
@@ -11,12 +14,14 @@ import { APP_CONFIG } from '@/config/app';
 export interface EntitlementStatus {
   isPremium: boolean;
   isTrial: boolean;
+  trialStartedAt?: Date;
   trialEndsAt?: Date;
   trialDaysRemaining?: number;
   plan?: string;
   source: 'local' | 'stripe' | 'iap' | 'none';
   expiresAt?: Date;
   isExpired: boolean;
+  isTrialExpired: boolean;
 }
 
 export interface PurchaseResult {
@@ -51,19 +56,17 @@ class StripeBillingProvider implements BillingProvider {
 
   async purchase(_planId: string): Promise<PurchaseResult> {
     // This will be implemented when Stripe is enabled
-    // For now, return not implemented
     return {
       success: false,
-      error: 'Stripe integration not configured. Enable Stripe in settings.',
+      error: 'Stripe-integration kommer snart!',
     };
   }
 
   async restorePurchases(): Promise<PurchaseResult> {
     // Stripe subscriptions are linked to email/account
-    // Will be synced when user logs in
     return {
       success: false,
-      error: 'Please log in to restore your subscription.',
+      error: 'Logga in för att återställa ditt abonnemang.',
     };
   }
 
@@ -73,7 +76,6 @@ class StripeBillingProvider implements BillingProvider {
   }
 
   async openManagement(): Promise<void> {
-    // Open Stripe customer portal
     console.log('Stripe management portal not yet implemented');
   }
 }
@@ -94,14 +96,14 @@ class StubIAPBillingProvider implements BillingProvider {
   async purchase(_planId: string): Promise<PurchaseResult> {
     return {
       success: false,
-      error: 'In-app purchases coming soon!',
+      error: 'In-app-köp kommer snart!',
     };
   }
 
   async restorePurchases(): Promise<PurchaseResult> {
     return {
       success: false,
-      error: 'In-app purchases coming soon!',
+      error: 'In-app-köp kommer snart!',
     };
   }
 
@@ -143,34 +145,33 @@ class EntitlementsService {
 
   async getStatus(): Promise<EntitlementStatus> {
     // Check local entitlement first
-    const localEntitlement = await localStore.getEntitlement();
+    let localEntitlement = await localStore.getEntitlement();
     
-    if (localEntitlement) {
-      const status = this.entitlementToStatus(localEntitlement);
-      
-      // If we have a valid local status, use it
-      if (status.isPremium || status.isTrial) {
-        return status;
-      }
+    // Auto-start trial on first launch
+    if (!localEntitlement) {
+      console.log('[EntitlementsService] First launch - auto-starting trial');
+      return this.startGuestTrial();
+    }
+    
+    const status = this.entitlementToStatus(localEntitlement);
+    
+    // If premium or valid trial, return immediately
+    if (status.isPremium || (status.isTrial && !status.isTrialExpired)) {
+      return status;
     }
 
-    // Check billing providers
+    // Check billing providers for premium status
     for (const provider of this.providers) {
       if (provider.isSupported()) {
         const providerStatus = await provider.getStatus();
-        if (providerStatus && (providerStatus.isPremium || providerStatus.isTrial)) {
+        if (providerStatus && providerStatus.isPremium) {
           return providerStatus;
         }
       }
     }
 
-    // No entitlements found
-    return {
-      isPremium: false,
-      isTrial: false,
-      source: 'none',
-      isExpired: false,
-    };
+    // Return current status (may be expired trial)
+    return status;
   }
 
   async refresh(): Promise<EntitlementStatus> {
@@ -180,6 +181,7 @@ class EntitlementsService {
   }
 
   // ============= Trial =============
+  // Trial works WITHOUT login - it's device-based
 
   async startGuestTrial(): Promise<EntitlementStatus> {
     const deviceId = await localStore.getDeviceId();
@@ -195,16 +197,82 @@ class EntitlementsService {
       source: 'local',
     });
 
+    console.log(`[EntitlementsService] Trial started, ends at ${new Date(trialEndsAt).toISOString()}`);
     return this.refresh();
+  }
+  
+  async isTrialExpired(): Promise<boolean> {
+    const status = await this.getStatus();
+    return status.isTrialExpired && !status.isPremium;
   }
 
   async transferTrialToAccount(userId: string): Promise<void> {
     const entitlement = await localStore.getEntitlement();
     if (entitlement?.isTrial && entitlement.trialStartedAt) {
       // Store trial info to be synced with account
-      // This would be sent to the backend to preserve trial period
-      console.log(`Transferring trial started at ${entitlement.trialStartedAt} to account ${userId}`);
+      console.log(`[EntitlementsService] Transferring trial to account ${userId}`);
     }
+  }
+  
+  // ============= Dev Tools =============
+  
+  async devResetTrial(): Promise<EntitlementStatus> {
+    if (import.meta.env.DEV) {
+      console.log('[EntitlementsService] DEV: Resetting trial');
+      const deviceId = await localStore.getDeviceId();
+      const now = Date.now();
+      const trialEndsAt = now + (APP_CONFIG.guestMode.trialDays * 24 * 60 * 60 * 1000);
+      
+      await localStore.saveEntitlement({
+        deviceId,
+        isPremium: false,
+        isTrial: true,
+        trialStartedAt: now,
+        trialEndsAt,
+        source: 'local',
+      });
+      
+      return this.refresh();
+    }
+    return this.getStatus();
+  }
+  
+  async devExpireTrial(): Promise<EntitlementStatus> {
+    if (import.meta.env.DEV) {
+      console.log('[EntitlementsService] DEV: Expiring trial');
+      const deviceId = await localStore.getDeviceId();
+      const past = Date.now() - (8 * 24 * 60 * 60 * 1000); // 8 days ago
+      
+      await localStore.saveEntitlement({
+        deviceId,
+        isPremium: false,
+        isTrial: true,
+        trialStartedAt: past,
+        trialEndsAt: past + (7 * 24 * 60 * 60 * 1000), // Expired
+        source: 'local',
+      });
+      
+      return this.refresh();
+    }
+    return this.getStatus();
+  }
+  
+  async devTogglePremium(): Promise<EntitlementStatus> {
+    if (import.meta.env.DEV) {
+      const current = await localStore.getEntitlement();
+      const deviceId = await localStore.getDeviceId();
+      
+      await localStore.saveEntitlement({
+        deviceId,
+        isPremium: !current?.isPremium,
+        isTrial: false,
+        source: 'local',
+      });
+      
+      console.log(`[EntitlementsService] DEV: Premium toggled to ${!current?.isPremium}`);
+      return this.refresh();
+    }
+    return this.getStatus();
   }
 
   // ============= Purchase =============
@@ -275,23 +343,25 @@ class EntitlementsService {
 
   private entitlementToStatus(entitlement: LocalEntitlement): EntitlementStatus {
     const now = Date.now();
-    const isExpired = entitlement.expiresAt ? entitlement.expiresAt < now : false;
-    const trialExpired = entitlement.trialEndsAt ? entitlement.trialEndsAt < now : false;
+    const isPremiumExpired = entitlement.expiresAt ? entitlement.expiresAt < now : false;
+    const isTrialExpired = entitlement.trialEndsAt ? entitlement.trialEndsAt < now : false;
 
     let trialDaysRemaining: number | undefined;
-    if (entitlement.isTrial && entitlement.trialEndsAt && !trialExpired) {
-      trialDaysRemaining = Math.ceil((entitlement.trialEndsAt - now) / (24 * 60 * 60 * 1000));
+    if (entitlement.isTrial && entitlement.trialEndsAt && !isTrialExpired) {
+      trialDaysRemaining = Math.max(0, Math.ceil((entitlement.trialEndsAt - now) / (24 * 60 * 60 * 1000)));
     }
 
     return {
-      isPremium: entitlement.isPremium && !isExpired,
-      isTrial: entitlement.isTrial && !trialExpired,
+      isPremium: entitlement.isPremium && !isPremiumExpired,
+      isTrial: entitlement.isTrial,
+      trialStartedAt: entitlement.trialStartedAt ? new Date(entitlement.trialStartedAt) : undefined,
       trialEndsAt: entitlement.trialEndsAt ? new Date(entitlement.trialEndsAt) : undefined,
       trialDaysRemaining,
       plan: entitlement.plan,
       source: entitlement.source,
       expiresAt: entitlement.expiresAt ? new Date(entitlement.expiresAt) : undefined,
-      isExpired: isExpired || trialExpired,
+      isExpired: isPremiumExpired,
+      isTrialExpired,
     };
   }
 
