@@ -14,6 +14,7 @@ import { useChannelStore, useFilteredChannelIds } from "@/data/stores/channelSto
 import { useRecentlyWatched } from "@/hooks/useRecentlyWatched";
 import { useChannelSearch } from "@/hooks/useChannelSearch";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Channel, EpgProgram } from "@/types/iptv";
 import type { CoreChannel } from "@/core/types";
 
@@ -346,14 +347,21 @@ export default function LiveTVPage() {
                 />
                 
                 {/* Fullscreen button overlay */}
-                <Button
-                  variant="secondary"
-                  size="icon"
-                  className="absolute bottom-2 right-2 z-30 h-7 w-7 bg-black/60 hover:bg-black/80 text-white border-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                  onClick={() => setIsExpandedPlayer(true)}
-                >
-                  <Maximize2 className="w-3.5 h-3.5" />
-                </Button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="secondary"
+                      size="icon"
+                      className="absolute bottom-2 right-2 z-30 h-7 w-7 bg-black/60 hover:bg-black/80 text-white border-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={() => setIsExpandedPlayer(true)}
+                    >
+                      <Maximize2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Tryck Escape för att minimera</p>
+                  </TooltipContent>
+                </Tooltip>
               </div>
             </div>
             
@@ -376,15 +384,22 @@ export default function LiveTVPage() {
                   
                   {/* Expand button - visible on desktop */}
                   <div className="hidden sm:flex pt-1">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-xs gap-1.5 h-7"
-                      onClick={() => setIsExpandedPlayer(true)}
-                    >
-                      <Maximize2 className="w-3 h-3" />
-                      Fullskärm
-                    </Button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-xs gap-1.5 h-7"
+                          onClick={() => setIsExpandedPlayer(true)}
+                        >
+                          <Maximize2 className="w-3 h-3" />
+                          Fullskärm
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Tryck Escape för att minimera</p>
+                      </TooltipContent>
+                    </Tooltip>
                   </div>
                 </div>
               ) : (
@@ -410,14 +425,21 @@ export default function LiveTVPage() {
             
             {/* Mobile buttons */}
             <div className="flex flex-col gap-1 sm:hidden shrink-0">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => setIsExpandedPlayer(true)}
-              >
-                <Maximize2 className="w-4 h-4" />
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                    onClick={() => setIsExpandedPlayer(true)}
+                  >
+                    <Maximize2 className="w-4 h-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Tryck Escape för att minimera</p>
+                </TooltipContent>
+              </Tooltip>
               <Button
                 variant="ghost"
                 size="icon"
