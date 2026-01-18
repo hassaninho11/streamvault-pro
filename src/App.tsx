@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -7,7 +8,9 @@ import { AuthProvider } from "@/hooks/useAuth";
 import { TVModeProvider } from "@/contexts/TVModeContext";
 import { ProfileProvider } from "@/contexts/ProfileContext";
 import { MultiScreenProvider } from "@/contexts/MultiScreenContext";
+import { LanguageProvider } from "@/contexts/LanguageContext";
 import { PlaylistLoadingOverlay } from "@/components/loading/PlaylistLoadingOverlay";
+import { useSettingsStore } from "@/data/stores/settingsStore";
 import Home from "./pages/Home";
 import LiveTV from "./pages/LiveTV";
 import Movies from "./pages/Movies";
@@ -25,6 +28,19 @@ import ProfileSelect from "./pages/ProfileSelect";
 import Health from "./pages/Health";
 import PlaybackTestLab from "./pages/PlaybackTestLab";
 import NotFound from "./pages/NotFound";
+
+// Initialize settings on app load
+function SettingsInitializer() {
+  const { load, initialized } = useSettingsStore();
+  
+  useEffect(() => {
+    if (!initialized) {
+      load();
+    }
+  }, [load, initialized]);
+  
+  return null;
+}
 
 const queryClient = new QueryClient();
 
@@ -59,14 +75,17 @@ const App = () => (
       <ProfileProvider>
         <MultiScreenProvider>
           <TVModeProvider>
-            <TooltipProvider>
-              <Toaster />
-              <Sonner />
-              <PlaylistLoadingOverlay />
-              <BrowserRouter>
-                <AppRoutes />
-              </BrowserRouter>
-            </TooltipProvider>
+            <LanguageProvider>
+              <TooltipProvider>
+                <SettingsInitializer />
+                <Toaster />
+                <Sonner />
+                <PlaylistLoadingOverlay />
+                <BrowserRouter>
+                  <AppRoutes />
+                </BrowserRouter>
+              </TooltipProvider>
+            </LanguageProvider>
           </TVModeProvider>
         </MultiScreenProvider>
       </ProfileProvider>
