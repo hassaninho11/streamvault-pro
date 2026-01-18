@@ -5,6 +5,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Tv, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { TVLayout } from '@/components/tv/TVLayout';
 import { PaginatedVodGrid } from '@/components/vod/PaginatedVodGrid';
@@ -108,10 +109,18 @@ export default function SeriesPage() {
   }, []);
   
   const handlePlay = useCallback((item: VodItem | Episode) => {
-    if (!item || !item.streamUrl) {
-      console.error('No stream URL for episode:', item);
+    if (!item) {
+      console.error('No item provided for playback');
+      toast.error('Kunde inte spela upp - inget avsnitt valt');
       return;
     }
+    
+    if (!item.streamUrl) {
+      console.error('No stream URL for episode:', item);
+      toast.error('Kunde inte spela upp - ingen stream-URL hittades');
+      return;
+    }
+    
     setSelectedSeries(null);
     // Navigate to VOD player with stream info
     const params = new URLSearchParams({

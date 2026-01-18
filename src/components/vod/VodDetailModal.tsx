@@ -12,13 +12,16 @@ import {
   Plus,
   Check,
   Sparkles,
-  AlertCircle
+  AlertCircle,
+  Loader2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { VodItem, Movie, Series, Season, Episode, Subtitle } from '@/types/vod';
 import { useTVMode } from '@/contexts/TVModeContext';
 import { useVodStore } from '@/data/stores/vodStore';
 import { useEntitlements } from '@/hooks/useEntitlements';
+import { useLocalProviders } from '@/hooks/useLocalProviders';
+import { VodService } from '@/services/VodService';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -42,17 +45,73 @@ export function VodDetailModal({
 }: VodDetailModalProps) {
   const { isTVMode } = useTVMode();
   const { canAccessFeature } = useEntitlements();
-  const { toggleFavorite, getSubtitles, getWatchProgress } = useVodStore();
+  const { toggleFavorite, getSubtitles, getWatchProgress, addSeries } = useVodStore();
+  const { providers, getDecryptedXtreamCredentials } = useLocalProviders();
   const [selectedSeason, setSelectedSeason] = useState<number>(1);
   const [imageLoaded, setImageLoaded] = useState(false);
+  const [loadedSeries, setLoadedSeries] = useState<Series | null>(null);
+  const [isLoadingEpisodes, setIsLoadingEpisodes] = useState(false);
   
   const isSeries = item?.type === 'series';
-  const series = isSeries ? (item as Series) : null;
-  const movie = !isSeries ? (item as Movie) : null;
+  const rawSeries = isSeries ? (item as Series) : null;
+  // Use loaded series if available, otherwise use passed item
+  const series = loadedSeries?.id === rawSeries?.id ? loadedSeries : rawSeries;
+  const movie = !isSeries && item?.type === 'movie' ? (item as Movie) : null;
   const subtitles = item ? getSubtitles(item.id) : [];
   const progress = item ? getWatchProgress(item.id) : null;
   
   const canGenerateSubtitles = canAccessFeature('ai_subtitles');
+  
+  // Load series episodes when opening a series
+  useEffect(() => {
+    if (!open || !rawSeries) {
+      setLoadedSeries(null);
+      return;
+    }
+    
+    // If series already has seasons loaded, use it
+    if (rawSeries.seasons && rawSeries.seasons.length > 0) {
+      setLoadedSeries(rawSeries);
+      setSelectedSeason(rawSeries.seasons[0]?.seasonNumber || 1);
+      return;
+    }
+    
+    // Find the provider to get credentials for API call
+    const provider = providers.find(p => p.id === rawSeries.providerId);
+    if (!provider || provider.type !== 'xtream') {
+      console.log('[VodDetailModal] Cannot load episodes - no valid xtream provider');
+      return;
+    }
+    
+    setIsLoadingEpisodes(true);
+    
+    // Decrypt credentials and load series info
+    getDecryptedXtreamCredentials(rawSeries.providerId).then(creds => {
+      if (!creds) {
+        console.error('[VodDetailModal] Could not decrypt credentials');
+        setIsLoadingEpisodes(false);
+        return;
+      }
+      
+      return VodService.loadSeriesInfo(
+        rawSeries.id,
+        creds.host,
+        creds.user,
+        creds.pass
+      );
+    }).then(fullSeries => {
+      if (fullSeries) {
+        setLoadedSeries(fullSeries);
+        setSelectedSeason(fullSeries.seasons[0]?.seasonNumber || 1);
+        // Update store with full series data
+        addSeries([fullSeries]);
+      }
+    }).catch(err => {
+      console.error('[VodDetailModal] Failed to load series info:', err);
+    }).finally(() => {
+      setIsLoadingEpisodes(false);
+    });
+  }, [open, rawSeries?.id, providers, addSeries, getDecryptedXtreamCredentials]);
   
   useEffect(() => {
     setImageLoaded(false);
@@ -249,8 +308,16 @@ export function VodDetailModal({
             </p>
           )}
           
+          {/* Series: Loading episodes */}
+          {isSeries && isLoadingEpisodes && (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+              <span className="ml-3 text-muted-foreground">Laddar avsnitt...</span>
+            </div>
+          )}
+          
           {/* Series: Season/Episode selector */}
-          {series && series.seasons.length > 0 && (
+          {series && series.seasons && series.seasons.length > 0 && !isLoadingEpisodes && (
             <div className="space-y-4">
               <Tabs
                 value={String(selectedSeason)}
@@ -275,56 +342,71 @@ export function VodDetailModal({
                   >
                     <ScrollArea className="h-64">
                       <div className="space-y-2">
-                        {season.episodes.map(episode => {
-                          const epProgress = getWatchProgress(episode.id);
-                          
-                          return (
-                            <button
-                              key={episode.id}
-                              onClick={() => onPlay(episode)}
-                              className={cn(
-                                "w-full flex items-center gap-4 p-3 rounded-lg transition-colors",
-                                "hover:bg-muted focus:bg-muted focus:outline-none",
-                                "text-left"
-                              )}
-                            >
-                              <div className="w-8 text-center text-muted-foreground font-medium">
-                                {episode.episodeNumber}
-                              </div>
-                              
-                              <div className="flex-1 min-w-0">
-                                <h4 className="font-medium truncate">
-                                  {episode.episodeTitle || episode.title}
-                                </h4>
-                                {episode.description && (
-                                  <p className="text-sm text-muted-foreground line-clamp-1">
-                                    {episode.description}
-                                  </p>
+                        {season.episodes && season.episodes.length > 0 ? (
+                          season.episodes.map(episode => {
+                            const epProgress = getWatchProgress(episode.id);
+                            
+                            return (
+                              <button
+                                key={episode.id}
+                                onClick={() => onPlay(episode)}
+                                className={cn(
+                                  "w-full flex items-center gap-4 p-3 rounded-lg transition-colors",
+                                  "hover:bg-muted focus:bg-muted focus:outline-none",
+                                  "text-left"
                                 )}
-                              </div>
-                              
-                              <div className="flex items-center gap-3 text-muted-foreground text-sm">
-                                {episode.duration && (
-                                  <span>{episode.duration} min</span>
-                                )}
-                                {epProgress && !epProgress.completed && (
-                                  <div className="w-16 h-1 bg-muted rounded-full overflow-hidden">
-                                    <div 
-                                      className="h-full bg-primary rounded-full"
-                                      style={{ width: `${epProgress.progress}%` }}
-                                    />
-                                  </div>
-                                )}
-                                <Play className="w-5 h-5" />
-                              </div>
-                            </button>
-                          );
-                        })}
+                              >
+                                <div className="w-8 text-center text-muted-foreground font-medium">
+                                  {episode.episodeNumber}
+                                </div>
+                                
+                                <div className="flex-1 min-w-0">
+                                  <h4 className="font-medium truncate">
+                                    {episode.episodeTitle || episode.title}
+                                  </h4>
+                                  {episode.description && (
+                                    <p className="text-sm text-muted-foreground line-clamp-1">
+                                      {episode.description}
+                                    </p>
+                                  )}
+                                </div>
+                                
+                                <div className="flex items-center gap-3 text-muted-foreground text-sm">
+                                  {episode.duration && (
+                                    <span>{episode.duration} min</span>
+                                  )}
+                                  {epProgress && !epProgress.completed && (
+                                    <div className="w-16 h-1 bg-muted rounded-full overflow-hidden">
+                                      <div 
+                                        className="h-full bg-primary rounded-full"
+                                        style={{ width: `${epProgress.progress}%` }}
+                                      />
+                                    </div>
+                                  )}
+                                  <Play className="w-5 h-5" />
+                                </div>
+                              </button>
+                            );
+                          })
+                        ) : (
+                          <p className="text-center text-muted-foreground py-4">
+                            Inga avsnitt tillgängliga
+                          </p>
+                        )}
                       </div>
                     </ScrollArea>
                   </TabsContent>
                 ))}
               </Tabs>
+            </div>
+          )}
+          
+          {/* Series: No episodes available message */}
+          {isSeries && !isLoadingEpisodes && (!series?.seasons || series.seasons.length === 0) && (
+            <div className="text-center py-8 text-muted-foreground">
+              <AlertCircle className="w-8 h-8 mx-auto mb-2 opacity-50" />
+              <p>Kunde inte ladda avsnitt för denna serie.</p>
+              <p className="text-sm mt-1">Kontrollera att din provider stöder serie-info.</p>
             </div>
           )}
           

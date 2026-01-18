@@ -5,6 +5,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Film, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { TVLayout } from '@/components/tv/TVLayout';
 import { PaginatedVodGrid } from '@/components/vod/PaginatedVodGrid';
@@ -105,10 +106,18 @@ export default function MoviesPage() {
   }, []);
   
   const handlePlay = useCallback((item: VodItem | Episode) => {
-    if (!item || !item.streamUrl) {
-      console.error('No stream URL for item:', item);
+    if (!item) {
+      console.error('No item provided for playback');
+      toast.error('Kunde inte spela upp - ingen film vald');
       return;
     }
+    
+    if (!item.streamUrl) {
+      console.error('No stream URL for item:', item);
+      toast.error('Kunde inte spela upp - ingen stream-URL hittades');
+      return;
+    }
+    
     setSelectedMovie(null);
     // Navigate to VOD player with stream info
     const params = new URLSearchParams({
