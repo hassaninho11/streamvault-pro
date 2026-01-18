@@ -245,10 +245,36 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
       
       if (isCancelled) return;
       
+      // Check if this is an unsupported format (MKV, AVI, WMV, FLV)
+      const lowerUrl = originalUrl.toLowerCase();
+      const unsupportedExtensions = ['.mkv', '.avi', '.wmv', '.flv'];
+      const isUnsupportedFormat = unsupportedExtensions.some(ext => lowerUrl.includes(ext));
+      
       // Build list of URLs to try (with fallbacks)
-      // For VOD, just try the direct URL - browser will handle supported formats
-      // MKV files won't work in browser but that's expected behavior
-      const urlsToTry: string[] = [playbackUrl];
+      const urlsToTry: string[] = [];
+      
+      if (isUnsupportedFormat && isXtreamStyle) {
+        // For unsupported formats on Xtream servers, try HLS version first
+        // Xtream servers typically support HLS for VOD content
+        // Replace container extension with .m3u8
+        const hlsUrl = originalUrl.replace(/\.(mkv|avi|wmv|flv)(\?.*)?$/i, '.m3u8$2');
+        if (hlsUrl !== originalUrl) {
+          urlsToTry.push(hlsUrl);
+          console.log('[VideoPlayer] Trying HLS version for unsupported format:', hlsUrl.substring(0, 80));
+        }
+        
+        // Also try adding /hls/ path for some Xtream implementations
+        const hlsPathUrl = originalUrl.replace(/\/(movie|series)\//, '/hls/$1/').replace(/\.(mkv|avi|wmv|flv)(\?.*)?$/i, '.m3u8$2');
+        if (hlsPathUrl !== originalUrl && hlsPathUrl !== hlsUrl) {
+          urlsToTry.push(hlsPathUrl);
+        }
+        
+        // Add original as last fallback (won't work but shows proper error)
+        urlsToTry.push(playbackUrl);
+      } else {
+        // For supported formats or non-Xtream, try direct URL first
+        urlsToTry.push(playbackUrl);
+      }
       
       // Add original without .m3u8 as fallback for Xtream URLs
       if (isXtreamStyle && originalUrl.endsWith('.m3u8')) {
