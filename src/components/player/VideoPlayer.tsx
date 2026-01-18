@@ -191,43 +191,14 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
       let playbackUrl = originalUrl;
       let usingProxy = false;
       
-      // Check if we have mixed content issue (HTTP stream on HTTPS page)
-      const isHttpOnHttps = originalUrl.startsWith('http://') && window.location.protocol === 'https:';
-      
-      // For HTTP streams on HTTPS pages, browser will block direct playback
-      // We need to either use proxy or show external player options
-      if (isHttpOnHttps) {
-        console.log('[VideoPlayer] HTTP stream on HTTPS page - mixed content issue');
-        
-        // For VOD content (MKV, MP4), show external player options directly
-        // since proxy often gets blocked by providers (HTTP 458)
-        if (isVod && !isHls) {
-          console.log('[VideoPlayer] VOD content with mixed content - showing external player options');
-          setIsBuffering(false);
-          setShowBlockedScreen(true);
-          return;
-        }
-        
-        // For HLS, try proxy
-        if (preflight.recommendedStrategy === 'proxy_https' || preflight.isMixedContentBlocked) {
-          const proxyUrl = preflight.resolvedUrl || buildProxyUrl(originalUrl);
-          if (proxyUrl) {
-            playbackUrl = proxyUrl;
-            usingProxy = true;
-            console.log('[VideoPlayer] Using proxy URL for HLS');
-          } else {
-            setIsBuffering(false);
-            setShowBlockedScreen(true);
-            return;
-          }
-        }
-      } else if (preflight.recommendedStrategy === 'upgraded_https' && preflight.resolvedUrl) {
-        // HTTPS upgrade succeeded - use the upgraded URL
+      // Simple approach: just try direct playback first
+      // Only use special handling if preflight explicitly says we need it
+      if (preflight.recommendedStrategy === 'upgraded_https' && preflight.resolvedUrl) {
         playbackUrl = preflight.resolvedUrl;
         console.log('[VideoPlayer] Using HTTPS-upgraded URL');
       }
       
-      console.log(`[VideoPlayer] Playback mode: ${isVod ? 'VOD' : 'Live'}, isHls: ${isHls}, usingProxy: ${usingProxy}`);
+      console.log(`[VideoPlayer] Playback mode: ${isVod ? 'VOD' : 'Live'}, isHls: ${isHls}, url: ${playbackUrl.substring(0, 50)}...`);
       
       setIsUsingProxy(usingProxy);
       
