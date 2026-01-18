@@ -259,9 +259,24 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
         }
       }
       
-      // For VOD content (non-HLS), add proxy URL as fallback if not already using it
-      // This handles cases where direct playback was tried first
-      if (!isHls && !usingProxy && directStreamUrl) {
+      // For VOD content (non-HLS), PRIORITIZE proxy for MKV/AVI/WMV as browsers can't play them directly
+      // The browser CANNOT play .mkv, .avi, .wmv files directly - they need transcoding via proxy or HLS
+      if (!isHls && directStreamUrl) {
+        const lowerUrl = originalUrl.toLowerCase();
+        const needsProxy = lowerUrl.includes('.mkv') || lowerUrl.includes('.avi') || 
+                          lowerUrl.includes('.wmv') || lowerUrl.includes('.flv');
+        
+        if (needsProxy) {
+          // For unsupported formats, try proxy FIRST (or HLS version)
+          // Try HLS version first (Xtream servers often support this)
+          const hlsUrl = originalUrl.replace(/\.(mkv|avi|wmv|flv)(\?.*)?$/i, '.m3u8$2');
+          if (hlsUrl !== originalUrl) {
+            urlsToTry.unshift(hlsUrl);
+            console.log('[VideoPlayer] Added HLS version as primary for VOD:', hlsUrl.substring(0, 60));
+          }
+        }
+        
+        // Always add proxy as a fallback for VOD content
         const proxyFallback = buildProxyUrl(originalUrl);
         if (proxyFallback && !urlsToTry.includes(proxyFallback)) {
           urlsToTry.push(proxyFallback);
