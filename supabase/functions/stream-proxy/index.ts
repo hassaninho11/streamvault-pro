@@ -170,10 +170,22 @@ serve(async (req: Request) => {
         
         if (!retryResponse.ok && retryResponse.status !== 206) {
           console.error(`[stream-proxy] Retry also failed: ${retryResponse.status}`);
+          
+          // Provide more specific error messages for common provider blocks
+          let hint = 'The stream provider may be blocking proxy requests or the stream may be unavailable.';
+          if (response.status === 403 || response.status === 458 || retryResponse.status === 458) {
+            hint = 'This provider blocks access from external IPs. Use VLC or an external media player instead.';
+          } else if (response.status === 404) {
+            hint = 'The stream URL is no longer valid. The content may have been removed.';
+          } else if (response.status === 401) {
+            hint = 'Authentication required. Your login credentials may have expired.';
+          }
+          
           return new Response(
             JSON.stringify({ 
               error: `Stream server returned ${response.status}`,
-              hint: 'The stream provider may be blocking proxy requests or the stream may be unavailable.'
+              hint,
+              useExternalPlayer: true, // Signal to frontend to show external player options
             }),
             { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
