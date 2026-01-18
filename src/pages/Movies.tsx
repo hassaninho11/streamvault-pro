@@ -2,12 +2,12 @@
  * Movies Page - Netflix-style movie browsing
  * Loads real VOD data from Xtream providers
  */
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Film, Loader2 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { TVLayout } from '@/components/tv/TVLayout';
-import { VodGrid } from '@/components/vod/VodGrid';
+import { PaginatedVodGrid } from '@/components/vod/PaginatedVodGrid';
 import { VodCategoryRow } from '@/components/vod/VodCategoryRow';
 import { VodFilterBar } from '@/components/vod/VodFilterBar';
 import { VodDetailModal } from '@/components/vod/VodDetailModal';
@@ -208,7 +208,7 @@ export default function MoviesPage() {
                 ))}
               </div>
             ) : (
-              <VodGrid
+              <PaginatedVodGrid
                 items={filteredMovies}
                 onItemClick={handleItemClick}
                 onItemPlay={handlePlay}
