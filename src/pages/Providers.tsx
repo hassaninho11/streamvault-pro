@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AddProviderForm, ProviderFormData } from "@/components/providers/AddProviderForm";
 import { EditProviderDialog, EditProviderData } from "@/components/providers/EditProviderDialog";
+import { ImportSummaryModal } from "@/components/import/ImportSummaryModal";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -26,12 +27,14 @@ import { useProviders, CreateProviderData, Provider } from "@/hooks/useProviders
 import { useVodStore } from "@/data/stores/vodStore";
 import { playlistService } from "@/services/PlaylistService";
 import { toast } from "sonner";
+import type { ImportSummary } from "@/services/ImportService";
 
 export default function ProvidersPage() {
   const { providers, loading, addProvider, updateProvider, deleteProvider, refreshProvider, refetch } = useProviders();
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingProvider, setEditingProvider] = useState<Provider | null>(null);
   const [providerToDelete, setProviderToDelete] = useState<Provider | null>(null);
+  const [importSummary, setImportSummary] = useState<ImportSummary | null>(null);
   
   // Get VOD counts from store
   const { movies, series } = useVodStore();
@@ -86,11 +89,12 @@ export default function ProvidersPage() {
       // Apply metadata updates
       await updateProvider(providerId, updates as Parameters<typeof updateProvider>[1]);
       
+      const provider = providers.find(p => p.id === providerId);
+      
       // If new source, re-import channels
       if (hasNewSource) {
         toast.loading("Importerar kanaler från ny källa...", { id: "reimport-channels" });
         
-        const provider = providers.find(p => p.id === providerId);
         let result;
         
         if (data.xtream_host && data.xtream_user && data.xtream_pass) {
@@ -111,9 +115,46 @@ export default function ProvidersPage() {
             channel_count: result.channelCount,
             last_sync: new Date().toISOString(),
           });
-          toast.success(`Uppdaterad med ${result.channelCount} kanaler!`);
+          
+          // Get VOD counts for summary
+          const providerMovies = movies.filter(m => m.providerId === providerId).length;
+          const providerSeries = series.filter(s => s.providerId === providerId).length;
+          
+          // Show import summary modal
+          setImportSummary({
+            success: true,
+            providerId,
+            providerName: provider?.name || data.name,
+            stats: {
+              total: result.channelCount + providerMovies + providerSeries,
+              liveCount: result.channelCount,
+              movieCount: providerMovies,
+              seriesCount: providerSeries,
+              episodeCount: 0, // We don't have this info from this flow
+              seasonCount: 0,
+              unknownCount: 0,
+              parseTimeMs: 0,
+              processTimeMs: 0,
+            }
+          });
         } else if (result) {
-          toast.error(`Import misslyckades: ${result.error}`);
+          setImportSummary({
+            success: false,
+            providerId,
+            providerName: provider?.name || data.name,
+            error: result.error || 'Import misslyckades',
+            stats: {
+              total: 0,
+              liveCount: 0,
+              movieCount: 0,
+              seriesCount: 0,
+              episodeCount: 0,
+              seasonCount: 0,
+              unknownCount: 0,
+              parseTimeMs: 0,
+              processTimeMs: 0,
+            }
+          });
         }
       }
       
@@ -310,6 +351,13 @@ export default function ProvidersPage() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {/* Import Summary Modal */}
+        <ImportSummaryModal
+          summary={importSummary}
+          open={importSummary !== null}
+          onClose={() => setImportSummary(null)}
+        />
       </div>
     </AppLayout>
   );
