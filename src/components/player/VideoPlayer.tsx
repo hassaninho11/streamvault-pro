@@ -33,6 +33,7 @@ import { usePip } from "@/services/PipService";
 import { useMultiScreen } from "@/contexts/MultiScreenContext";
 import { QualitySelector, QualityLevel } from "./QualitySelector";
 import { PlaybackBlockedScreen } from "./PlaybackBlockedScreen";
+import { UnsupportedFormatScreen } from "./UnsupportedFormatScreen";
 import { localStore } from "@/data/stores/localStore";
 import { toast } from "sonner";
 import {
@@ -75,6 +76,9 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
   // Playback blocked state for smart fallback UI
   const [showBlockedScreen, setShowBlockedScreen] = useState(false);
   const [preflightResult, setPreflightResult] = useState<PreflightResult | null>(null);
+  
+  // Unsupported format state
+  const [unsupportedFormat, setUnsupportedFormat] = useState<{ format: string; url: string } | null>(null);
   const [isUsingProxy, setIsUsingProxy] = useState(false);
   
   // Quality levels state
@@ -156,6 +160,7 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
     setError(null);
     setIsBuffering(true);
     setShowBlockedScreen(false);
+    setUnsupportedFormat(null);
     setIsUsingProxy(false);
     setQualityLevels([]);
     setIsPlaying(false);
@@ -164,9 +169,12 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
     console.log(`[VideoPlayer] === NEW PLAYBACK REQUEST ===`);
     console.log(`[VideoPlayer] URL: ${originalUrl.substring(0, 100)}...`);
     
-    // For Xtream-style URLs without extension, try adding .m3u8 for HLS
-    const isXtreamStyle = /\/live\/[^/]+\/[^/]+\/\d+$/.test(originalUrl) || 
-                          /\/[^/]+\/[^/]+\/\d+$/.test(originalUrl);
+    // For Xtream-style URLs - detect pattern: /type/user/pass/id or /type/user/pass/id.ext
+    // Examples: /live/user/pass/123, /series/user/pass/456.mkv, /movie/user/pass/789.mp4
+    const isXtreamStyle = /\/(live|movie|series)\/[^/]+\/[^/]+\/\d+(\.\w+)?$/.test(originalUrl) || 
+                          /\/[^/]+\/[^/]+\/\d+(\.\w+)?$/.test(originalUrl);
+    
+    console.log(`[VideoPlayer] Xtream style detected: ${isXtreamStyle}, URL pattern check for: ${originalUrl.substring(0, 80)}`);
     
     if (isXtreamStyle && !originalUrl.toLowerCase().includes('.')) {
       originalUrl = originalUrl + '.m3u8';
@@ -290,6 +298,18 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
       let currentUrlIndex = 0;
       
       const showFinalError = () => {
+        // Check if this is an unsupported format issue (MKV, AVI, etc.)
+        if (isUnsupportedFormat) {
+          // Extract the format extension
+          const formatMatch = originalUrl.match(/\.(mkv|avi|wmv|flv)(\?|$)/i);
+          const format = formatMatch ? formatMatch[1] : 'mkv';
+          
+          setIsBuffering(false);
+          setUnsupportedFormat({ format, url: originalUrl });
+          console.log(`[VideoPlayer] Showing unsupported format screen for ${format}`);
+          return;
+        }
+        
         // Show blocked screen with alternatives if mixed content is the issue
         if (preflight.isMixedContentBlocked) {
           setIsBuffering(false);
@@ -696,6 +716,24 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
           }}
           onStrategySelect={handleStrategySelect}
           onCancel={() => setShowBlockedScreen(false)}
+          className="h-full"
+        />
+      </div>
+    );
+  }
+  
+  // Show unsupported format screen
+  if (unsupportedFormat) {
+    return (
+      <div className={cn("bg-player-bg rounded-xl aspect-video", className)}>
+        <UnsupportedFormatScreen
+          streamUrl={unsupportedFormat.url}
+          format={unsupportedFormat.format}
+          title={vodTitle || channel?.name}
+          onCancel={() => {
+            setUnsupportedFormat(null);
+            navigate(-1);
+          }}
           className="h-full"
         />
       </div>
