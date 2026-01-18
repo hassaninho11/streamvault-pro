@@ -4,6 +4,7 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AddProviderForm, ProviderFormData } from "@/components/providers/AddProviderForm";
+import { EditProviderDialog, EditProviderData } from "@/components/providers/EditProviderDialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,12 +12,15 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { EmptyState } from "@/components/ui/custom";
-import { useProviders, CreateProviderData } from "@/hooks/useProviders";
+import { useProviders, CreateProviderData, Provider } from "@/hooks/useProviders";
 import { useVodStore } from "@/data/stores/vodStore";
+import { playlistService } from "@/services/PlaylistService";
+import { toast } from "sonner";
 
 export default function ProvidersPage() {
-  const { providers, loading, addProvider, deleteProvider, refreshProvider } = useProviders();
+  const { providers, loading, addProvider, updateProvider, deleteProvider, refreshProvider, refetch } = useProviders();
   const [showAddForm, setShowAddForm] = useState(false);
+  const [editingProvider, setEditingProvider] = useState<Provider | null>(null);
   
   // Get VOD counts from store
   const { movies, series } = useVodStore();
@@ -35,6 +39,79 @@ export default function ProvidersPage() {
     const success = await addProvider(providerData);
     if (success) {
       setShowAddForm(false);
+    }
+  };
+
+  const handleEditProvider = async (providerId: string, data: EditProviderData): Promise<boolean> => {
+    try {
+      // First, update the provider metadata
+      const updates: Record<string, unknown> = {
+        name: data.name,
+      };
+      
+      if (data.epg_url) {
+        updates.epg_url = data.epg_url;
+      }
+      
+      // If new source credentials are provided, update and re-import
+      const hasNewSource = data.m3u_url || (data.xtream_host && data.xtream_user && data.xtream_pass);
+      
+      if (hasNewSource) {
+        // Update source credentials
+        if (data.m3u_url) {
+          updates.m3u_url = data.m3u_url;
+        }
+        if (data.xtream_host) {
+          updates.xtream_host = data.xtream_host;
+        }
+        if (data.xtream_user) {
+          updates.xtream_user = data.xtream_user;
+        }
+        if (data.xtream_pass) {
+          updates.xtream_pass_encrypted = data.xtream_pass;
+        }
+      }
+      
+      // Apply metadata updates
+      await updateProvider(providerId, updates as Parameters<typeof updateProvider>[1]);
+      
+      // If new source, re-import channels
+      if (hasNewSource) {
+        toast.loading("Importerar kanaler från ny källa...", { id: "reimport-channels" });
+        
+        const provider = providers.find(p => p.id === providerId);
+        let result;
+        
+        if (data.xtream_host && data.xtream_user && data.xtream_pass) {
+          result = await playlistService.loadXtreamPlaylist(
+            data.xtream_host,
+            data.xtream_user,
+            data.xtream_pass,
+            providerId
+          );
+        } else if (data.m3u_url) {
+          result = await playlistService.loadM3UPlaylist(data.m3u_url, providerId);
+        }
+        
+        toast.dismiss("reimport-channels");
+        
+        if (result?.success) {
+          await updateProvider(providerId, { 
+            channel_count: result.channelCount,
+            last_sync: new Date().toISOString(),
+          });
+          toast.success(`Uppdaterad med ${result.channelCount} kanaler!`);
+        } else if (result) {
+          toast.error(`Import misslyckades: ${result.error}`);
+        }
+      }
+      
+      await refetch();
+      return true;
+    } catch (err) {
+      console.error("Error editing provider:", err);
+      toast.error("Kunde inte uppdatera leverantören");
+      return false;
     }
   };
 
@@ -128,7 +205,7 @@ export default function ProvidersPage() {
                             <RefreshCw className="w-4 h-4 mr-2" />
                             Uppdatera
                           </DropdownMenuItem>
-                          <DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setEditingProvider(provider)}>
                             <Edit className="w-4 h-4 mr-2" />
                             Redigera
                           </DropdownMenuItem>
@@ -187,6 +264,16 @@ export default function ProvidersPage() {
             })}
           </div>
         )}
+        
+        {/* Edit Provider Dialog */}
+        <EditProviderDialog
+          provider={editingProvider}
+          open={editingProvider !== null}
+          onOpenChange={(open) => {
+            if (!open) setEditingProvider(null);
+          }}
+          onSave={handleEditProvider}
+        />
       </div>
     </AppLayout>
   );
