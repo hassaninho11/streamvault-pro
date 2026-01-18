@@ -5,23 +5,21 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Tv, Loader2 } from 'lucide-react';
-import { toast } from 'sonner';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { TVLayout } from '@/components/tv/TVLayout';
 import { PaginatedVodGrid } from '@/components/vod/PaginatedVodGrid';
 import { VodCategoryRow } from '@/components/vod/VodCategoryRow';
 import { VodFilterBar } from '@/components/vod/VodFilterBar';
-import { VodDetailModal } from '@/components/vod/VodDetailModal';
 import { useVodStore } from '@/data/stores/vodStore';
 import { useVodLoader } from '@/hooks/useVodLoader';
 import { useTVMode } from '@/contexts/TVModeContext';
-import { Series, VodItem, Episode } from '@/types/vod';
+import { VodItem, Episode } from '@/types/vod';
 import { cn } from '@/lib/utils';
 
 export default function SeriesPage() {
   const { isTVMode } = useTVMode();
   const navigate = useNavigate();
-  const { isLoading: vodLoading, seriesCount } = useVodLoader();
+  const { isLoading: vodLoading } = useVodLoader();
   
   const { 
     series,
@@ -33,7 +31,6 @@ export default function SeriesPage() {
     getFilteredSeries,
   } = useVodStore();
   
-  const [selectedSeries, setSelectedSeries] = useState<Series | null>(null);
   const [viewMode, setViewMode] = useState<'categories' | 'grid'>('categories');
   
   // Get all genres from actual series
@@ -105,31 +102,24 @@ export default function SeriesPage() {
   }, [series, allGenres, getContinueWatching]);
   
   const handleItemClick = useCallback((item: VodItem) => {
-    setSelectedSeries(item as Series);
-  }, []);
+    // Navigate to series detail page
+    navigate(`/series/${item.id}`);
+  }, [navigate]);
   
   const handlePlay = useCallback((item: VodItem | Episode) => {
-    if (!item) {
-      console.error('No item provided for playback');
-      toast.error('Kunde inte spela upp - inget avsnitt valt');
-      return;
+    // For episodes, navigate to player
+    if (item.type === 'episode' && item.streamUrl) {
+      const params = new URLSearchParams({
+        type: 'episode',
+        id: item.id,
+        url: item.streamUrl,
+        title: item.title || 'Avsnitt',
+      });
+      navigate(`/live?vod=true&${params.toString()}`);
+    } else {
+      // For series, navigate to detail page
+      navigate(`/series/${item.id}`);
     }
-    
-    if (!item.streamUrl) {
-      console.error('No stream URL for episode:', item);
-      toast.error('Kunde inte spela upp - ingen stream-URL hittades');
-      return;
-    }
-    
-    setSelectedSeries(null);
-    // Navigate to VOD player with stream info
-    const params = new URLSearchParams({
-      type: 'episode',
-      id: item.id,
-      url: item.streamUrl,
-      title: item.title || 'Avsnitt',
-    });
-    navigate(`/live?vod=true&${params.toString()}`);
   }, [navigate]);
   
   const handleFilterChange = useCallback((filter: Partial<typeof currentFilter>) => {
@@ -231,14 +221,6 @@ export default function SeriesPage() {
           </div>
         </>
       )}
-      
-      {/* Detail modal */}
-      <VodDetailModal
-        item={selectedSeries}
-        open={!!selectedSeries}
-        onClose={() => setSelectedSeries(null)}
-        onPlay={handlePlay}
-      />
     </div>
   );
   
