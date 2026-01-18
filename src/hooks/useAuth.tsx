@@ -9,6 +9,7 @@ interface AuthContextType {
   session: Session | null;
   loading: boolean;
   isGuest: boolean;
+  isAuthenticated: boolean;
   signUp: (email: string, password: string) => Promise<{ error: Error | null }>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signInWithGoogle: () => Promise<{ error: Error | null }>;
@@ -94,7 +95,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${window.location.origin}/`,
+        redirectTo: `${window.location.origin}/auth`,
       },
     });
     return { error };
@@ -117,6 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user]);
 
   const isGuest = !user && !loading;
+  const isAuthenticated = !!user && !loading;
 
   return (
     <AuthContext.Provider
@@ -125,6 +127,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         session,
         loading,
         isGuest,
+        isAuthenticated,
         signUp,
         signIn,
         signInWithGoogle,

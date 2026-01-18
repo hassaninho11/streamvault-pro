@@ -1,16 +1,31 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { z } from "zod";
-import { Zap, Mail, Lock, Eye, EyeOff, Loader2, AlertCircle, ArrowLeft, Cloud, Smartphone } from "lucide-react";
+import { 
+  Zap, 
+  Mail, 
+  Lock, 
+  Eye, 
+  EyeOff, 
+  Loader2, 
+  AlertCircle, 
+  ArrowLeft, 
+  Cloud, 
+  Smartphone,
+  Shield,
+  Info
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useAuth } from "@/hooks/useAuth";
 import { APP_CONFIG } from "@/config/app";
 import { cn } from "@/lib/utils";
+import { SyncWizard, needsSyncWizard } from "@/components/sync/SyncWizard";
 
 // Validation schemas
 const emailSchema = z.string().email("Please enter a valid email address");
@@ -28,13 +43,23 @@ export default function AuthPage() {
   const [error, setError] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [showSyncWizard, setShowSyncWizard] = useState(false);
 
-  // Redirect if already logged in
+  // Redirect if already logged in, or show sync wizard for first login
   useEffect(() => {
     if (user && !loading) {
-      navigate("/");
+      if (needsSyncWizard(user.id)) {
+        setShowSyncWizard(true);
+      } else {
+        navigate("/");
+      }
     }
   }, [user, loading, navigate]);
+
+  const handleSyncWizardClose = () => {
+    setShowSyncWizard(false);
+    navigate("/");
+  };
 
   const validateForm = (): boolean => {
     let isValid = true;
@@ -147,6 +172,10 @@ export default function AuthPage() {
           <Smartphone className="w-4 h-4 text-primary" />
           <span>Backup & restore</span>
         </div>
+        <div className="flex items-center gap-2">
+          <Shield className="w-4 h-4 text-primary" />
+          <span>Encrypted storage</span>
+        </div>
       </div>
 
       {/* Auth Card */}
@@ -205,6 +234,14 @@ export default function AuthPage() {
             </svg>
             Continue with Google
           </Button>
+
+          {/* Info about Facebook */}
+          <Alert className="bg-muted/50 border-muted">
+            <Info className="h-4 w-4" />
+            <AlertDescription className="text-xs">
+              Only Google sign-in is currently available. Email/password is also supported below.
+            </AlertDescription>
+          </Alert>
 
           <div className="relative">
             <Separator />
@@ -312,6 +349,9 @@ export default function AuthPage() {
           </p>
         </CardContent>
       </Card>
+
+      {/* Sync Wizard Dialog */}
+      <SyncWizard open={showSyncWizard} onClose={handleSyncWizardClose} />
     </div>
   );
 }
