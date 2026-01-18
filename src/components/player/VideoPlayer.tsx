@@ -162,6 +162,9 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
     }
     
     const isHls = isHlsUrl(originalUrl);
+    const isVod = !!directStreamUrl;
+    
+    console.log(`[VideoPlayer] Starting playback - isHls: ${isHls}, isVod: ${isVod}, url: ${originalUrl.substring(0, 60)}...`);
     
     // Async preflight and playback setup
     const startPlayback = async () => {
@@ -171,7 +174,7 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
       const castController = getCastController();
       const preflight = await performPreflightAsync({
         streamUrl: originalUrl,
-        sourceType: directStreamUrl ? 'vod' : 'live',
+        sourceType: isVod ? 'vod' : 'live',
         hasChromecast: castController.isChromecastAvailable(),
         hasAirPlay: castController.isAirPlayAvailable(),
       });
@@ -181,7 +184,7 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
       setPreflightResult(preflight);
       
       // Log diagnostic code
-      console.log(`[VideoPlayer] Preflight result: ${preflight.diagnosticCode}, strategy: ${preflight.recommendedStrategy}`);
+      console.log(`[VideoPlayer] Preflight result: ${preflight.diagnosticCode}, strategy: ${preflight.recommendedStrategy}, mixedContent: ${preflight.isMixedContentBlocked}`);
       
       // Determine which URL to use based on preflight result
       let playbackUrl = originalUrl;
@@ -253,6 +256,16 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
           if (fallbackProxy) urlsToTry.push(fallbackProxy);
         } else {
           urlsToTry.push(withoutExt);
+        }
+      }
+      
+      // For VOD content (non-HLS), always add proxy URL as fallback if not already using it
+      // This handles MKV, MP4, and other direct video formats that need CORS bypass
+      if (!isHls && !isUsingProxy && directStreamUrl) {
+        const proxyFallback = buildProxyUrl(originalUrl);
+        if (proxyFallback && !urlsToTry.includes(proxyFallback)) {
+          urlsToTry.push(proxyFallback);
+          console.log('[VideoPlayer] Added proxy fallback for VOD content');
         }
       }
       
