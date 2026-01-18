@@ -45,6 +45,8 @@ export interface VODPlayerSettings extends PlayerSettings {
 const DEFAULT_VOD_SETTINGS: VODPlayerSettings = {
   preferredEngine: 'auto',
   bufferMode: 'balanced',
+  subtitleDelay: 0,
+  forceSoftwareDecoding: false,
   maxRetries: 2,
   retryDelay: 2000,
   autoPlayNext: true,

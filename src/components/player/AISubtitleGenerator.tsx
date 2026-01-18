@@ -46,7 +46,7 @@ export function AISubtitleGenerator({
   onClose,
 }: AISubtitleGeneratorProps) {
   const { isTVMode } = useTVMode();
-  const { canAccessFeature, getQuotaUsage } = useEntitlements();
+  const { canAccessFeature, isPremium } = useEntitlements();
   const { addSubtitle } = useVodStore();
   
   const [targetLanguage, setTargetLanguage] = useState('auto');
@@ -56,7 +56,8 @@ export function AISubtitleGenerator({
   const [success, setSuccess] = useState(false);
   
   const hasAccess = canAccessFeature('ai_subtitles');
-  const quotaUsage = getQuotaUsage('ai_subtitles');
+  // Quota tracking - placeholder until we implement backend tracking
+  const quotaUsage = isPremium ? { used: 0, limit: 10 } : null;
   
   const handleGenerate = async () => {
     if (!hasAccess) return;

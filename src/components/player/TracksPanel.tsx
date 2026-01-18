@@ -118,12 +118,12 @@ export function TracksPanel({
                         currentSubtitleId === track.id && "bg-primary/10 text-primary"
                       )}
                     >
-                      <div className="text-left">
+                    <div className="text-left">
                         <span className={cn("block", isTVMode && "text-lg")}>
-                          {track.label || track.language || 'Undertext'}
+                          {track.label || track.lang || 'Undertext'}
                         </span>
-                        {track.isForced && (
-                          <span className="text-xs text-muted-foreground">Forcerad</span>
+                        {track.kind === 'external' && (
+                          <span className="text-xs text-muted-foreground">{track.format?.toUpperCase()}</span>
                         )}
                       </div>
                       {currentSubtitleId === track.id && <Check className="w-5 h-5" />}
@@ -174,13 +174,8 @@ export function TracksPanel({
                     >
                       <div className="text-left">
                         <span className={cn("block", isTVMode && "text-lg")}>
-                          {track.label || track.language || 'Ljud'}
+                          {track.label || track.lang || 'Ljud'}
                         </span>
-                        {track.codec && (
-                          <span className="text-xs text-muted-foreground uppercase">
-                            {track.codec}
-                          </span>
-                        )}
                       </div>
                       {currentAudioId === track.id && <Check className="w-5 h-5" />}
                     </button>
