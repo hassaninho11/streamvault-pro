@@ -1,6 +1,6 @@
-import { useMemo, useCallback, useEffect, useRef } from "react";
+import { useMemo, useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { Loader2, Tv, Search } from "lucide-react";
+import { Loader2, Tv, Search, Maximize2, Minimize2 } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { VideoPlayer } from "@/components/player/VideoPlayer";
 import { VirtualizedChannelList } from "@/components/channels/VirtualizedChannelList";
@@ -41,6 +41,7 @@ export default function LiveTVPage() {
   const channelId = searchParams.get("channel");
   const { addToRecentlyWatched } = useRecentlyWatched();
   const { isOpen: isSearchOpen, setIsOpen: setSearchOpen } = useChannelSearch();
+  const [isExpandedPlayer, setIsExpandedPlayer] = useState(false);
   
   // Check for VOD playback
   const isVodMode = searchParams.get("vod") === "true";
@@ -260,6 +261,60 @@ export default function LiveTVPage() {
   }
 
   // Standard Desktop/Mobile Layout - Channel list primary, mini-player on top
+  // OR Expanded player mode
+  
+  if (isExpandedPlayer) {
+    // Expanded/Fullscreen player mode
+    return (
+      <AppLayout>
+        <ChannelSearchCommand open={isSearchOpen} onOpenChange={setSearchOpen} />
+        <div className="flex flex-col h-[calc(100vh-3.5rem)] lg:h-screen bg-black">
+          {/* Expanded Player */}
+          <div className="flex-1 relative">
+            <VideoPlayer
+              channel={selectedChannel}
+              onPrevious={currentIndex > 0 ? handlePrevious : undefined}
+              onNext={currentIndex < channels.length - 1 ? handleNext : undefined}
+              className="h-full w-full"
+            />
+            
+            {/* Exit fullscreen button - fixed position */}
+            <Button
+              variant="secondary"
+              size="sm"
+              className="absolute top-4 right-4 z-50 gap-2 bg-black/60 hover:bg-black/80 text-white border-0"
+              onClick={() => setIsExpandedPlayer(false)}
+            >
+              <Minimize2 className="w-4 h-4" />
+              <span className="hidden sm:inline">Minimera</span>
+            </Button>
+            
+            {/* Channel info overlay */}
+            {selectedChannel && (
+              <div className="absolute bottom-4 left-4 right-4 z-40 pointer-events-none">
+                <div className="bg-black/60 backdrop-blur-sm rounded-lg p-3 sm:p-4 max-w-md">
+                  <div className="flex items-center gap-2 mb-1">
+                    <h2 className="text-base sm:text-lg font-semibold text-white truncate">{selectedChannel.name}</h2>
+                    {selectedChannel.isHD && (
+                      <span className="px-1.5 py-0.5 bg-primary/30 text-primary text-xs rounded font-medium shrink-0">HD</span>
+                    )}
+                  </div>
+                  <p className="text-xs sm:text-sm text-white/70 truncate">{selectedChannel.group}</p>
+                  {epgData?.now && (
+                    <div className="text-xs text-white/70 truncate mt-1">
+                      <span className="text-primary">Nu:</span> {epgData.now.title}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </AppLayout>
+    );
+  }
+  
+  // Default: Mini-player layout
   return (
     <AppLayout>
       <ChannelSearchCommand open={isSearchOpen} onOpenChange={setSearchOpen} />
@@ -268,7 +323,7 @@ export default function LiveTVPage() {
         <div className="shrink-0 p-2 sm:p-3 lg:p-4 border-b border-border bg-card/30">
           <div className="flex items-start gap-3 lg:gap-4">
             {/* Mini player container - 16:9 aspect ratio, limited height */}
-            <div className="w-48 sm:w-64 md:w-80 lg:w-96 shrink-0">
+            <div className="w-48 sm:w-64 md:w-80 lg:w-96 shrink-0 relative group">
               <div className="relative aspect-video rounded-lg overflow-hidden bg-black shadow-lg">
                 <VideoPlayer
                   channel={selectedChannel}
@@ -276,6 +331,16 @@ export default function LiveTVPage() {
                   onNext={currentIndex < channels.length - 1 ? handleNext : undefined}
                   className="absolute inset-0"
                 />
+                
+                {/* Fullscreen button overlay */}
+                <Button
+                  variant="secondary"
+                  size="icon"
+                  className="absolute bottom-2 right-2 z-30 h-7 w-7 bg-black/60 hover:bg-black/80 text-white border-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                  onClick={() => setIsExpandedPlayer(true)}
+                >
+                  <Maximize2 className="w-3.5 h-3.5" />
+                </Button>
               </div>
             </div>
             
@@ -295,6 +360,19 @@ export default function LiveTVPage() {
                       <span className="text-primary">Nu:</span> {epgData.now.title}
                     </div>
                   )}
+                  
+                  {/* Expand button - visible on desktop */}
+                  <div className="hidden sm:flex pt-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-xs gap-1.5 h-7"
+                      onClick={() => setIsExpandedPlayer(true)}
+                    >
+                      <Maximize2 className="w-3 h-3" />
+                      Fullskärm
+                    </Button>
+                  </div>
                 </div>
               ) : (
                 <div className="text-sm text-muted-foreground">
@@ -303,7 +381,7 @@ export default function LiveTVPage() {
               )}
               
               {/* Search hint - desktop */}
-              <div className="hidden md:flex mt-3">
+              <div className="hidden md:flex mt-2">
                 <Button
                   variant="ghost"
                   size="sm"
@@ -317,15 +395,25 @@ export default function LiveTVPage() {
               </div>
             </div>
             
-            {/* Mobile search button */}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="md:hidden shrink-0"
-              onClick={() => setSearchOpen(true)}
-            >
-              <Search className="w-4 h-4" />
-            </Button>
+            {/* Mobile buttons */}
+            <div className="flex flex-col gap-1 sm:hidden shrink-0">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setIsExpandedPlayer(true)}
+              >
+                <Maximize2 className="w-4 h-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setSearchOpen(true)}
+              >
+                <Search className="w-4 h-4" />
+              </Button>
+            </div>
           </div>
         </div>
 
