@@ -27,6 +27,8 @@ import SyncBackup from "./pages/SyncBackup";
 import ProfileSelect from "./pages/ProfileSelect";
 import Health from "./pages/Health";
 import PlaybackTestLab from "./pages/PlaybackTestLab";
+import Privacy from "./pages/Privacy";
+import Terms from "./pages/Terms";
 import NotFound from "./pages/NotFound";
 
 // Initialize settings on app load
@@ -64,6 +66,8 @@ const AppRoutes = () => {
       <Route path="/sync" element={<SyncBackup />} />
       <Route path="/health" element={<Health />} />
       <Route path="/testlab" element={<PlaybackTestLab />} />
+      <Route path="/privacy" element={<Privacy />} />
+      <Route path="/terms" element={<Terms />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   );

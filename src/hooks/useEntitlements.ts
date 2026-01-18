@@ -11,12 +11,17 @@ export interface UseEntitlementsReturn {
   loading: boolean;
   isPremium: boolean;
   isTrial: boolean;
+  isTrialExpired: boolean;
   trialDaysRemaining?: number;
   canAccessFeature: (feature: string) => boolean;
   startTrial: () => Promise<void>;
   purchase: (planId: string) => Promise<PurchaseResult>;
   restorePurchases: () => Promise<PurchaseResult>;
   refresh: () => Promise<void>;
+  // Dev tools
+  devResetTrial: () => Promise<void>;
+  devExpireTrial: () => Promise<void>;
+  devTogglePremium: () => Promise<void>;
 }
 
 export function useEntitlements(): UseEntitlementsReturn {
@@ -72,17 +77,33 @@ export function useEntitlements(): UseEntitlementsReturn {
     setLoading(false);
   }, []);
 
+  const devResetTrial = useCallback(async () => {
+    await entitlementsService.devResetTrial();
+  }, []);
+
+  const devExpireTrial = useCallback(async () => {
+    await entitlementsService.devExpireTrial();
+  }, []);
+
+  const devTogglePremium = useCallback(async () => {
+    await entitlementsService.devTogglePremium();
+  }, []);
+
   return {
     status,
     loading,
     isPremium: status?.isPremium || false,
     isTrial: status?.isTrial || false,
+    isTrialExpired: status?.isTrialExpired || false,
     trialDaysRemaining: status?.trialDaysRemaining,
     canAccessFeature,
     startTrial,
     purchase,
     restorePurchases,
     refresh,
+    devResetTrial,
+    devExpireTrial,
+    devTogglePremium,
   };
 }
 
