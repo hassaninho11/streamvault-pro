@@ -191,41 +191,33 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
       let playbackUrl = originalUrl;
       let usingProxy = false;
       
-      // For VOD content (non-HLS like MKV, MP4), always use proxy first on HTTPS pages
-      // This is critical because direct playback will always fail due to CORS/mixed content
-      const isHttpOnHttps = originalUrl.startsWith('http://') && window.location.protocol === 'https:';
-      const needsProxyForVod = isVod && !isHls && isHttpOnHttps;
+      // For VOD content (MKV, MP4, etc.), always try direct playback first
+      // HTML5 video element can play these formats directly without proxy
+      // Only use proxy as a fallback if direct playback fails
       
-      if (needsProxyForVod) {
-        const proxyUrl = buildProxyUrl(originalUrl);
-        if (proxyUrl) {
-          playbackUrl = proxyUrl;
-          usingProxy = true;
-          console.log('[VideoPlayer] VOD content on HTTPS - using proxy as primary');
-        }
-      } else if (preflight.recommendedStrategy === 'upgraded_https' && preflight.resolvedUrl) {
+      if (preflight.recommendedStrategy === 'upgraded_https' && preflight.resolvedUrl) {
         // HTTPS upgrade succeeded - use the upgraded URL
         playbackUrl = preflight.resolvedUrl;
         console.log('[VideoPlayer] Using HTTPS-upgraded URL');
-      } else if (preflight.recommendedStrategy === 'proxy_https') {
-        // Need to use proxy
+      } else if (preflight.recommendedStrategy === 'proxy_https' && isHls) {
+        // Only use proxy for HLS streams that have mixed content issues
+        // VOD content (MKV, MP4) should try direct playback first
         const proxyUrl = preflight.resolvedUrl || buildProxyUrl(originalUrl);
         if (proxyUrl) {
           playbackUrl = proxyUrl;
           usingProxy = true;
-          console.log('[VideoPlayer] Using proxy URL');
+          console.log('[VideoPlayer] Using proxy URL for HLS');
         } else if (preflight.isMixedContentBlocked) {
           // No proxy available, show blocked screen
           setIsBuffering(false);
           setShowBlockedScreen(true);
           return;
         }
-      } else if (preflight.isMixedContentBlocked && !preflight.canPlayDirect) {
-        // Mixed content blocked and no good strategy found
-        setIsBuffering(false);
-        setShowBlockedScreen(true);
-        return;
       }
+      // For non-HLS VOD content, we use direct playback (originalUrl)
+      // Proxy will be added as fallback in urlsToTry if needed
+      
+      console.log(`[VideoPlayer] Playback mode: ${isVod ? 'VOD' : 'Live'}, isHls: ${isHls}, usingProxy: ${usingProxy}`);
       
       setIsUsingProxy(usingProxy);
       
@@ -288,9 +280,8 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
       let currentUrlIndex = 0;
       
       const showFinalError = () => {
-        // For VOD content that failed, always show the blocked screen with options
-        // This gives users alternatives like VLC or external player
-        if (preflight.isMixedContentBlocked || isVod) {
+        // Show blocked screen with alternatives if mixed content is the issue
+        if (preflight.isMixedContentBlocked) {
           setIsBuffering(false);
           setShowBlockedScreen(true);
           return;
