@@ -160,6 +160,27 @@ export function useLocalProviders() {
   };
 
   /**
+   * Helper to decrypt a field that might be encrypted JSON or plain text
+   */
+  const decryptField = async (value: string | undefined): Promise<string> => {
+    if (!value) return '';
+    
+    // Try to parse as JSON (encrypted format)
+    try {
+      const parsed = JSON.parse(value);
+      // Check if it looks like an EncryptedPayload
+      if (parsed && typeof parsed === 'object' && parsed.data && parsed.iv) {
+        return await cryptoService.decrypt(parsed);
+      }
+      // It's valid JSON but not encrypted format, return as string
+      return typeof parsed === 'string' ? parsed : value;
+    } catch {
+      // Not valid JSON, return as plain text
+      return value;
+    }
+  };
+
+  /**
    * Get decrypted URL for playback (internal use only)
    * This should only be called when actually needing to play content
    */
@@ -169,8 +190,7 @@ export function useLocalProviders() {
       if (!provider) return null;
 
       if (provider.m3uUrl) {
-        const encrypted = JSON.parse(provider.m3uUrl) as EncryptedPayload;
-        return await cryptoService.decrypt(encrypted);
+        return await decryptField(provider.m3uUrl);
       }
 
       return null;
@@ -192,13 +212,9 @@ export function useLocalProviders() {
       const provider = await localStore.getProvider(providerId);
       if (!provider || !provider.xtreamHost) return null;
 
-      const host = await cryptoService.decrypt(JSON.parse(provider.xtreamHost));
-      const user = provider.xtreamUser 
-        ? await cryptoService.decrypt(JSON.parse(provider.xtreamUser))
-        : '';
-      const pass = provider.xtreamPassEncrypted
-        ? await cryptoService.decrypt(JSON.parse(provider.xtreamPassEncrypted))
-        : '';
+      const host = await decryptField(provider.xtreamHost);
+      const user = await decryptField(provider.xtreamUser);
+      const pass = await decryptField(provider.xtreamPassEncrypted);
 
       return { host, user, pass };
     } catch (err) {
