@@ -39,6 +39,7 @@ import {
   performPreflightAsync,
   PreflightResult,
   PlaybackStrategy,
+  Platform,
   buildProxyUrl,
   isHlsUrl,
 } from "@/player/PlaybackPreflight";
@@ -624,13 +625,35 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
     return ((state.playbackPosition - state.bufferStart) / range) * 100;
   };
 
-  // Show blocked screen when mixed content is detected
-  if (showBlockedScreen && preflightResult) {
+  // Show blocked screen when mixed content is detected or user wants alternative options
+  if (showBlockedScreen) {
     const streamUrl = directStreamUrl || channel?.streamUrl || '';
+    const isHttpStream = streamUrl.startsWith('http://');
+    const isSecurePage = window.location.protocol === 'https:';
+    
+    // Create a fallback preflight result if one doesn't exist
+    const effectivePreflight: PreflightResult = preflightResult || {
+      canPlayDirect: false,
+      isMixedContentBlocked: isHttpStream && isSecurePage,
+      availableStrategies: ['proxy_https', 'external_player'] as PlaybackStrategy[],
+      recommendedStrategy: 'proxy_https' as PlaybackStrategy,
+      diagnosticCode: 'INCOMPATIBLE' as const,
+      platform: 'web' as const,
+      details: {
+        isHttpStream,
+        isSecurePage,
+        streamProtocol: streamUrl.split(':')[0] || 'http',
+        pageProtocol: window.location.protocol.replace(':', ''),
+        isHls: isHlsUrl(streamUrl),
+        httpsUpgradeAttempted: false,
+        httpsUpgradeSucceeded: false,
+      },
+    };
+    
     return (
       <div className={cn("bg-player-bg rounded-xl aspect-video", className)}>
         <PlaybackBlockedScreen
-          preflight={preflightResult}
+          preflight={effectivePreflight}
           context={{
             streamUrl,
             title: vodTitle || channel?.name,
@@ -698,7 +721,7 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
         </div>
       )}
 
-      {/* Error Overlay */}
+      {/* Error Overlay with External Player Options */}
       {error && (
         <div className="absolute inset-0 flex items-center justify-center bg-player-bg/80">
           <div className="text-center max-w-lg px-4">
@@ -712,61 +735,48 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
                 onClick={() => {
                   setError(null);
                   setIsBuffering(true);
-                  if (videoRef.current && channel?.streamUrl) {
+                  const streamUrl = directStreamUrl || channel?.streamUrl;
+                  if (videoRef.current && streamUrl) {
                     destroyHls();
                     setTimeout(() => {
-                      if (channel) {
-                        videoRef.current!.src = channel.streamUrl;
-                        videoRef.current!.load();
-                      }
+                      videoRef.current!.src = streamUrl;
+                      videoRef.current!.load();
                     }, 100);
                   }
                 }}
               >
-                Retry
+                Försök igen
               </Button>
               
-              {channel?.streamUrl && (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => {
-                    navigator.clipboard.writeText(channel.streamUrl).then(() => {
-                      toast.success('Stream URL copied! Open in VLC or your preferred media player.');
-                    });
-                  }}
-                >
-                  <Copy className="w-3.5 h-3.5 mr-1.5" />
-                  Copy URL for VLC
-                </Button>
-              )}
-              
-              {channel?.streamUrl.startsWith('http://') && window.location.protocol === 'https:' && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => navigate('/settings')}
-                >
-                  <Settings className="w-3.5 h-3.5 mr-1.5" />
-                  Configure Proxy
-                </Button>
-              )}
+              {/* Show external player options */}
+              <Button
+                variant="default"
+                size="sm"
+                onClick={() => {
+                  const streamUrl = directStreamUrl || channel?.streamUrl;
+                  if (streamUrl) {
+                    // Show full blocked screen with all options
+                    setError(null);
+                    setShowBlockedScreen(true);
+                  }
+                }}
+              >
+                Visa alternativ
+              </Button>
             </div>
             
-            {channel?.streamUrl.startsWith('http://') && window.location.protocol === 'https:' && (
-              <div className="text-xs text-muted-foreground space-y-2 bg-muted/30 rounded-lg p-3">
-                <p className="font-medium text-foreground/80">Why can't I watch?</p>
-                <p>
-                  Your browser blocks HTTP streams on secure (HTTPS) pages for security reasons.
-                </p>
-                <p className="text-left">
-                  <strong>Solutions:</strong><br/>
-                  • Copy the URL and open it in VLC, Kodi, or another media player<br/>
-                  • Configure a custom CORS proxy in Settings → Media Player<br/>
-                  • Some IPTV providers also block streams from different IP addresses
-                </p>
-              </div>
-            )}
+            <div className="text-xs text-muted-foreground space-y-2 bg-muted/30 rounded-lg p-3">
+              <p className="font-medium text-foreground/80">Kunde inte spela strömmen</p>
+              <p>
+                Det kan bero på CORS-blockering, HTTP på HTTPS, eller att servern inte svarar.
+              </p>
+              <p className="text-left">
+                <strong>Alternativ:</strong><br/>
+                • Spela via proxy (HTTPS)<br/>
+                • Öppna i VLC eller annan mediaspelare<br/>
+                • Casta till TV
+              </p>
+            </div>
           </div>
         </div>
       )}
