@@ -7,7 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import { Tv, Loader2 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { TVLayout } from '@/components/tv/TVLayout';
-import { VodGrid } from '@/components/vod/VodGrid';
+import { PaginatedVodGrid } from '@/components/vod/PaginatedVodGrid';
 import { VodCategoryRow } from '@/components/vod/VodCategoryRow';
 import { VodFilterBar } from '@/components/vod/VodFilterBar';
 import { VodDetailModal } from '@/components/vod/VodDetailModal';
@@ -211,7 +211,7 @@ export default function SeriesPage() {
                 ))}
               </div>
             ) : (
-              <VodGrid
+              <PaginatedVodGrid
                 items={filteredSeries}
                 onItemClick={handleItemClick}
                 onItemPlay={handlePlay}
