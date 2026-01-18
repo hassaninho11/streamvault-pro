@@ -2,3 +2,6 @@ project_id = "fybvvetmzhyqotgfwezy"
 
 [functions.playlist-proxy]
 verify_jwt = false
+
+[functions.stream-proxy]
+verify_jwt = false
