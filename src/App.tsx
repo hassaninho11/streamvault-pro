@@ -12,6 +12,7 @@ import Home from "./pages/Home";
 import LiveTV from "./pages/LiveTV";
 import Movies from "./pages/Movies";
 import Series from "./pages/Series";
+import SeriesDetail from "./pages/SeriesDetail";
 import Epg from "./pages/Epg";
 import Search from "./pages/Search";
 import Favorites from "./pages/Favorites";
@@ -37,6 +38,7 @@ const AppRoutes = () => {
       <Route path="/live" element={<LiveTV />} />
       <Route path="/movies" element={<Movies />} />
       <Route path="/series" element={<Series />} />
+      <Route path="/series/:id" element={<SeriesDetail />} />
       <Route path="/epg" element={<Epg />} />
       <Route path="/search" element={<Search />} />
       <Route path="/favorites" element={<Favorites />} />
