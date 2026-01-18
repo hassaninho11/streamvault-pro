@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
   Settings as SettingsIcon,
   User,
@@ -7,16 +7,19 @@ import {
   CreditCard,
   Database,
   Info,
-  ChevronRight,
   Moon,
+  Sun,
+  Monitor,
   Globe,
   Play,
   Clock,
-  Trash2,
   Zap,
   Check,
   Server,
+  AlertCircle,
+  LogIn,
 } from "lucide-react";
+import { useNavigate, useBlocker } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -27,98 +30,124 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import { CacheManagement } from "@/components/settings/CacheManagement";
+import { SettingsSaveBar } from "@/components/settings/SettingsSaveBar";
+import { ProtectedSetting } from "@/components/settings/ProtectedSetting";
+import { UnsavedChangesDialog } from "@/components/settings/UnsavedChangesDialog";
 import { APP_CONFIG } from "@/config/app";
 import { cn } from "@/lib/utils";
-import { localStore } from "@/data/stores/localStore";
+import { useSettingsStore, PROTECTED_SETTINGS } from "@/data/stores/settingsStore";
+import { useAuth } from "@/hooks/useAuth";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 interface SettingsSection {
   id: string;
   icon: React.ElementType;
-  label: string;
+  labelKey: string;
 }
 
 const sections: SettingsSection[] = [
-  { id: "account", icon: User, label: "Account" },
-  { id: "player", icon: Tv, label: "Media Player" },
-  { id: "parental", icon: Shield, label: "Parental Controls" },
-  { id: "subscription", icon: CreditCard, label: "Subscription" },
-  { id: "cache", icon: Database, label: "Data & Cache" },
-  { id: "about", icon: Info, label: "About" },
+  { id: "account", icon: User, labelKey: "settings.account" },
+  { id: "player", icon: Tv, labelKey: "settings.player" },
+  { id: "parental", icon: Shield, labelKey: "settings.parental" },
+  { id: "subscription", icon: CreditCard, labelKey: "settings.subscription" },
+  { id: "cache", icon: Database, labelKey: "settings.cache" },
+  { id: "about", icon: Info, labelKey: "settings.about" },
 ];
 
 export default function SettingsPage() {
+  const navigate = useNavigate();
+  const { t } = useLanguage();
+  const { user, isGuest } = useAuth();
+  const { 
+    draftSettings, 
+    isDirty, 
+    isLoading, 
+    initialized,
+    load, 
+    updateDraft, 
+    resetDraft 
+  } = useSettingsStore();
+  
   const [activeSection, setActiveSection] = useState("account");
-  const [settings, setSettings] = useState({
-    theme: "dark",
-    language: "en",
-    autoPlay: true,
-    startOnLastChannel: true,
-    showChannelNumbers: false,
-    bufferSize: 30,
-    hardwareAcceleration: true,
-    parentalEnabled: false,
-    epgRefresh: 6,
-    // Player engine settings
-    preferredEngine: "auto",
-    bufferMode: "balanced",
-    subtitleDelay: 0,
-    audioLanguage: "",
-    // Stream proxy settings
-    customProxyUrl: "",
-    // MKV settings
-    mkvPlayerPreference: "auto" as 'auto' | 'native' | 'vlc',
-  });
+  const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
+  const [pendingNavigation, setPendingNavigation] = useState<string | null>(null);
 
-  // Load settings from localStore on mount
+  // Load settings on mount
   useEffect(() => {
-    localStore.getSettings().then((stored) => {
-      if (stored.playerSettings?.customProxyUrl) {
-        setSettings(prev => ({
-          ...prev,
-          customProxyUrl: stored.playerSettings.customProxyUrl || "",
-        }));
-      }
-    });
-  }, []);
-
-  const updateSetting = <K extends keyof typeof settings>(
-    key: K,
-    value: typeof settings[K]
-  ) => {
-    setSettings((prev) => ({ ...prev, [key]: value }));
-    
-    // Persist proxy URL to localStore
-    if (key === "customProxyUrl") {
-      localStore.getSettings().then((stored) => {
-        localStore.saveSettings({
-          ...stored,
-          playerSettings: {
-            ...stored.playerSettings,
-            customProxyUrl: value as string,
-          },
-        });
-      });
+    if (!initialized) {
+      load();
     }
+  }, [load, initialized]);
+
+  // Block navigation when dirty
+  const blocker = useBlocker(isDirty);
+  
+  useEffect(() => {
+    if (blocker.state === 'blocked') {
+      setShowUnsavedDialog(true);
+    }
+  }, [blocker.state]);
+
+  const handleConfirmNavigation = useCallback(() => {
+    resetDraft();
+    setShowUnsavedDialog(false);
+    if (blocker.state === 'blocked') {
+      blocker.proceed();
+    }
+  }, [resetDraft, blocker]);
+
+  const handleCancelNavigation = useCallback(() => {
+    setShowUnsavedDialog(false);
+    if (blocker.state === 'blocked') {
+      blocker.reset();
+    }
+  }, [blocker]);
+
+  // Helper to check if a setting is protected
+  const isProtected = (key: string): boolean => {
+    return PROTECTED_SETTINGS.includes(key as any);
   };
   
   const engineOptions = [
-    { id: "auto", displayName: "Auto (Recommended)", available: true },
-    { id: "shaka", displayName: "Shaka Player", available: true },
-    { id: "html5", displayName: "HTML5 (Fallback)", available: true },
+    { id: "auto", displayName: "Auto (Recommended)" },
+    { id: "shaka", displayName: "Shaka Player" },
+    { id: "html5", displayName: "HTML5 (Fallback)" },
   ];
 
   const trialDaysRemaining = APP_CONFIG.subscription.trialDays;
 
+  // Theme icon based on current theme
+  const ThemeIcon = draftSettings.theme === 'light' ? Sun : 
+                   draftSettings.theme === 'dark' ? Moon : Monitor;
+
+  if (!initialized || isLoading) {
+    return (
+      <AppLayout>
+        <div className="flex items-center justify-center h-full">
+          <div className="text-muted-foreground">{t('common.loading')}</div>
+        </div>
+      </AppLayout>
+    );
+  }
+
   return (
     <AppLayout>
-      <div className="flex flex-col lg:flex-row h-full">
+      <div className="flex flex-col lg:flex-row h-full relative">
         {/* Settings Navigation */}
         <div className="lg:w-64 border-b lg:border-b-0 lg:border-r border-border">
           <div className="p-4 lg:p-6">
-            <h1 className="text-xl font-bold mb-4 flex items-center gap-2">
-              <SettingsIcon className="w-5 h-5" />
-              Settings
-            </h1>
+            <div className="flex items-center justify-between mb-4">
+              <h1 className="text-xl font-bold flex items-center gap-2">
+                <SettingsIcon className="w-5 h-5" />
+                {t('settings.title')}
+              </h1>
+              {isDirty && (
+                <span className="flex items-center gap-1 text-xs text-warning">
+                  <AlertCircle className="w-3 h-3" />
+                  {t('settings.unsavedChanges')}
+                </span>
+              )}
+            </div>
             <nav className="flex lg:flex-col gap-1 overflow-x-auto lg:overflow-visible pb-2 lg:pb-0">
               {sections.map((section) => (
                 <button
@@ -132,7 +161,7 @@ export default function SettingsPage() {
                   )}
                 >
                   <section.icon className="w-4 h-4" />
-                  {section.label}
+                  {t(section.labelKey)}
                 </button>
               ))}
             </nav>
@@ -140,61 +169,112 @@ export default function SettingsPage() {
         </div>
 
         {/* Settings Content */}
-        <div className="flex-1 p-6 overflow-y-auto">
+        <div className="flex-1 p-6 overflow-y-auto pb-24 lg:pb-6">
           <div className="max-w-2xl space-y-6">
             {/* Account Section */}
             {activeSection === "account" && (
               <>
                 <Card variant="glass">
                   <CardHeader>
-                    <CardTitle>Profile</CardTitle>
+                    <CardTitle>{t('settings.profile')}</CardTitle>
                     <CardDescription>Manage your account settings</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="flex items-center gap-4">
                       <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-2xl font-bold text-primary-foreground">
-                        U
+                        {user?.email?.[0]?.toUpperCase() || 'G'}
                       </div>
-                      <div>
-                        <p className="font-semibold">User</p>
-                        <p className="text-sm text-muted-foreground">user@example.com</p>
+                      <div className="flex-1">
+                        <p className="font-semibold">{user?.email || 'Guest User'}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {isGuest ? 'Not logged in' : user?.email}
+                        </p>
                       </div>
-                      <Button variant="outline" size="sm" className="ml-auto">
-                        Edit Profile
-                      </Button>
+                      {isGuest ? (
+                        <Button 
+                          variant="default" 
+                          size="sm"
+                          onClick={() => navigate('/auth')}
+                        >
+                          <LogIn className="w-4 h-4 mr-2" />
+                          Log In
+                        </Button>
+                      ) : (
+                        <Button variant="outline" size="sm">
+                          {t('settings.editProfile')}
+                        </Button>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
 
                 <Card variant="glass">
                   <CardHeader>
-                    <CardTitle>Preferences</CardTitle>
+                    <CardTitle>{t('settings.preferences')}</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-6">
+                    {/* Theme */}
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <Moon className="w-5 h-5 text-muted-foreground" />
+                        <ThemeIcon className="w-5 h-5 text-muted-foreground" />
                         <div>
-                          <Label>Dark Mode</Label>
-                          <p className="text-sm text-muted-foreground">Always on</p>
+                          <Label>{t('settings.theme')}</Label>
+                          <p className="text-sm text-muted-foreground">
+                            {draftSettings.theme === 'system' ? t('settings.themeSystem') :
+                             draftSettings.theme === 'dark' ? t('settings.themeDark') : 
+                             t('settings.themeLight')}
+                          </p>
                         </div>
                       </div>
-                      <Switch checked disabled />
-                    </div>
-                    <Separator />
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <Globe className="w-5 h-5 text-muted-foreground" />
-                        <div>
-                          <Label>Language</Label>
-                          <p className="text-sm text-muted-foreground">Select your language</p>
-                        </div>
-                      </div>
-                      <Select value={settings.language} onValueChange={(v) => updateSetting("language", v)}>
+                      <Select 
+                        value={draftSettings.theme} 
+                        onValueChange={(v) => updateDraft('theme', v as 'dark' | 'light' | 'system')}
+                      >
                         <SelectTrigger className="w-32">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
+                          <SelectItem value="system">
+                            <div className="flex items-center gap-2">
+                              <Monitor className="w-4 h-4" />
+                              {t('settings.themeSystem')}
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="dark">
+                            <div className="flex items-center gap-2">
+                              <Moon className="w-4 h-4" />
+                              {t('settings.themeDark')}
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="light">
+                            <div className="flex items-center gap-2">
+                              <Sun className="w-4 h-4" />
+                              {t('settings.themeLight')}
+                            </div>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <Separator />
+                    
+                    {/* Language */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <Globe className="w-5 h-5 text-muted-foreground" />
+                        <div>
+                          <Label>{t('settings.language')}</Label>
+                          <p className="text-sm text-muted-foreground">Select your language</p>
+                        </div>
+                      </div>
+                      <Select 
+                        value={draftSettings.language} 
+                        onValueChange={(v) => updateDraft('language', v as 'auto' | 'en' | 'sv' | 'de')}
+                      >
+                        <SelectTrigger className="w-32">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="auto">{t('settings.languageAuto')}</SelectItem>
                           <SelectItem value="en">English</SelectItem>
                           <SelectItem value="sv">Svenska</SelectItem>
                           <SelectItem value="de">Deutsch</SelectItem>
@@ -211,22 +291,25 @@ export default function SettingsPage() {
               <>
                 <Card variant="glass">
                   <CardHeader>
-                    <CardTitle>Media Player</CardTitle>
-                    <CardDescription>Choose your preferred player engine</CardDescription>
+                    <CardTitle>{t('settings.player')}</CardTitle>
+                    <CardDescription>{t('settings.playerEngineDesc')}</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-6">
                     <div className="flex items-center justify-between">
                       <div>
-                        <Label>Player Engine</Label>
-                        <p className="text-sm text-muted-foreground">Auto selects the best player for your platform</p>
+                        <Label>{t('settings.playerEngine')}</Label>
+                        <p className="text-sm text-muted-foreground">{t('settings.playerEngineDesc')}</p>
                       </div>
-                      <Select value={settings.preferredEngine} onValueChange={(v) => updateSetting("preferredEngine", v)}>
+                      <Select 
+                        value={draftSettings.preferredEngine} 
+                        onValueChange={(v) => updateDraft('preferredEngine', v as any)}
+                      >
                         <SelectTrigger className="w-48">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
                           {engineOptions.map(opt => (
-                            <SelectItem key={opt.id} value={opt.id} disabled={!opt.available}>
+                            <SelectItem key={opt.id} value={opt.id}>
                               {opt.displayName}
                             </SelectItem>
                           ))}
@@ -236,37 +319,46 @@ export default function SettingsPage() {
                     <Separator />
                     <div className="flex items-center justify-between">
                       <div>
-                        <Label>Buffer Mode</Label>
-                        <p className="text-sm text-muted-foreground">Balance between latency and stability</p>
+                        <Label>{t('settings.bufferMode')}</Label>
+                        <p className="text-sm text-muted-foreground">{t('settings.bufferModeDesc')}</p>
                       </div>
-                      <Select value={settings.bufferMode} onValueChange={(v) => updateSetting("bufferMode", v)}>
+                      <Select 
+                        value={draftSettings.bufferMode} 
+                        onValueChange={(v) => updateDraft('bufferMode', v as any)}
+                      >
                         <SelectTrigger className="w-40">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="low-latency">Low Latency</SelectItem>
-                          <SelectItem value="balanced">Balanced</SelectItem>
-                          <SelectItem value="stability">Stability</SelectItem>
+                          <SelectItem value="low-latency">{t('settings.bufferLowLatency')}</SelectItem>
+                          <SelectItem value="balanced">{t('settings.bufferBalanced')}</SelectItem>
+                          <SelectItem value="stability">{t('settings.bufferStability')}</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                     <Separator />
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <Label>MKV-spelare</Label>
-                        <p className="text-sm text-muted-foreground">Välj spelare för MKV och andra containerformat</p>
+                    <ProtectedSetting>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <Label>{t('settings.mkvPlayer')}</Label>
+                          <p className="text-sm text-muted-foreground">{t('settings.mkvPlayerDesc')}</p>
+                        </div>
+                        <Select 
+                          value={draftSettings.mkvPlayerPreference} 
+                          onValueChange={(v) => updateDraft('mkvPlayerPreference', v as any)}
+                          disabled={isGuest}
+                        >
+                          <SelectTrigger className="w-48">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="auto">Auto (Recommended)</SelectItem>
+                            <SelectItem value="native">Native (Standard)</SelectItem>
+                            <SelectItem value="vlc">VLC (Compatibility)</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
-                      <Select value={settings.mkvPlayerPreference} onValueChange={(v) => updateSetting("mkvPlayerPreference", v as 'auto' | 'native' | 'vlc')}>
-                        <SelectTrigger className="w-48">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="auto">Auto (Rekommenderad)</SelectItem>
-                          <SelectItem value="native">Native (Standard)</SelectItem>
-                          <SelectItem value="vlc">VLC (Kompatibilitet)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
+                    </ProtectedSetting>
                   </CardContent>
                 </Card>
 
@@ -280,13 +372,13 @@ export default function SettingsPage() {
                       <div className="flex items-center gap-3">
                         <Play className="w-5 h-5 text-muted-foreground" />
                         <div>
-                          <Label>Auto-play</Label>
-                          <p className="text-sm text-muted-foreground">Start playing automatically</p>
+                          <Label>{t('settings.autoPlay')}</Label>
+                          <p className="text-sm text-muted-foreground">{t('settings.autoPlayDesc')}</p>
                         </div>
                       </div>
                       <Switch
-                        checked={settings.autoPlay}
-                        onCheckedChange={(v) => updateSetting("autoPlay", v)}
+                        checked={draftSettings.autoPlay}
+                        onCheckedChange={(v) => updateDraft('autoPlay', v)}
                       />
                     </div>
                     <Separator />
@@ -294,24 +386,24 @@ export default function SettingsPage() {
                       <div className="flex items-center gap-3">
                         <Clock className="w-5 h-5 text-muted-foreground" />
                         <div>
-                          <Label>Start on last channel</Label>
-                          <p className="text-sm text-muted-foreground">Resume from where you left</p>
+                          <Label>{t('settings.startOnLastChannel')}</Label>
+                          <p className="text-sm text-muted-foreground">{t('settings.startOnLastChannelDesc')}</p>
                         </div>
                       </div>
                       <Switch
-                        checked={settings.startOnLastChannel}
-                        onCheckedChange={(v) => updateSetting("startOnLastChannel", v)}
+                        checked={draftSettings.startOnLastChannel}
+                        onCheckedChange={(v) => updateDraft('startOnLastChannel', v)}
                       />
                     </div>
                     <Separator />
                     <div className="space-y-3">
                       <div className="flex items-center justify-between">
-                        <Label>Subtitle Delay</Label>
-                        <span className="text-sm text-muted-foreground">{settings.subtitleDelay}ms</span>
+                        <Label>{t('settings.subtitleDelay')}</Label>
+                        <span className="text-sm text-muted-foreground">{draftSettings.subtitleDelay}ms</span>
                       </div>
                       <Slider
-                        value={[settings.subtitleDelay]}
-                        onValueChange={([v]) => updateSetting("subtitleDelay", v)}
+                        value={[draftSettings.subtitleDelay]}
+                        onValueChange={([v]) => updateDraft('subtitleDelay', v)}
                         min={-2000}
                         max={2000}
                         step={100}
@@ -320,13 +412,44 @@ export default function SettingsPage() {
                     <Separator />
                     <div className="flex items-center justify-between">
                       <div>
-                        <Label>Hardware Acceleration</Label>
-                        <p className="text-sm text-muted-foreground">Better performance when enabled</p>
+                        <Label>{t('settings.hardwareAcceleration')}</Label>
+                        <p className="text-sm text-muted-foreground">{t('settings.hardwareAccelerationDesc')}</p>
                       </div>
                       <Switch
-                        checked={settings.hardwareAcceleration}
-                        onCheckedChange={(v) => updateSetting("hardwareAcceleration", v)}
+                        checked={draftSettings.hardwareAcceleration}
+                        onCheckedChange={(v) => updateDraft('hardwareAcceleration', v)}
                       />
+                    </div>
+                    <Separator />
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <Label>{t('settings.autoPlayNextEpisode')}</Label>
+                        <p className="text-sm text-muted-foreground">Automatically play the next episode</p>
+                      </div>
+                      <Switch
+                        checked={draftSettings.autoPlayNextEpisode}
+                        onCheckedChange={(v) => updateDraft('autoPlayNextEpisode', v)}
+                      />
+                    </div>
+                    <Separator />
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <Label>{t('settings.upNextCountdown')}</Label>
+                        <p className="text-sm text-muted-foreground">Time before auto-playing next</p>
+                      </div>
+                      <Select 
+                        value={String(draftSettings.upNextCountdown)} 
+                        onValueChange={(v) => updateDraft('upNextCountdown', Number(v) as 10 | 5 | 0)}
+                      >
+                        <SelectTrigger className="w-24">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="10">10s</SelectItem>
+                          <SelectItem value="5">5s</SelectItem>
+                          <SelectItem value="0">Off</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                   </CardContent>
                 </Card>
@@ -335,26 +458,29 @@ export default function SettingsPage() {
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <Server className="w-5 h-5" />
-                      Stream Proxy
+                      {t('settings.streamProxy')}
                     </CardTitle>
                     <CardDescription>
                       Configure a custom proxy server for HTTP streams. Required for playing HTTP streams on HTTPS pages when your IPTV provider blocks external proxies.
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="proxyUrl">Custom Proxy URL</Label>
-                      <Input
-                        id="proxyUrl"
-                        type="url"
-                        placeholder="https://your-proxy.example.com/stream?url="
-                        value={settings.customProxyUrl}
-                        onChange={(e) => updateSetting("customProxyUrl", e.target.value)}
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        The stream URL will be appended to this URL. Leave empty to use the default proxy.
-                      </p>
-                    </div>
+                    <ProtectedSetting>
+                      <div className="space-y-2">
+                        <Label htmlFor="proxyUrl">{t('settings.customProxyUrl')}</Label>
+                        <Input
+                          id="proxyUrl"
+                          type="url"
+                          placeholder="https://your-proxy.example.com/stream?url="
+                          value={draftSettings.customProxyUrl}
+                          onChange={(e) => updateDraft('customProxyUrl', e.target.value)}
+                          disabled={isGuest}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          The stream URL will be appended to this URL. Leave empty to use the default proxy.
+                        </p>
+                      </div>
+                    </ProtectedSetting>
                     <div className="p-3 rounded-lg bg-muted/50 text-sm text-muted-foreground space-y-2">
                       <p className="font-medium text-foreground">Why use a custom proxy?</p>
                       <ul className="list-disc list-inside space-y-1 text-xs">
@@ -362,10 +488,68 @@ export default function SettingsPage() {
                         <li>Running your own proxy ensures streams come from your network</li>
                         <li>A local proxy avoids Mixed Content browser restrictions</li>
                       </ul>
-                      <p className="text-xs mt-2">
-                        Example: Run a local CORS proxy like <code className="bg-background px-1 rounded">local-cors-proxy</code> or deploy your own on your server.
-                      </p>
                     </div>
+                  </CardContent>
+                </Card>
+
+                {/* Language preferences */}
+                <Card variant="glass">
+                  <CardHeader>
+                    <CardTitle>Audio & Subtitles</CardTitle>
+                    <CardDescription>Default language preferences</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    <ProtectedSetting>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <Label>{t('settings.preferredAudioLanguage')}</Label>
+                          <p className="text-sm text-muted-foreground">Default audio track language</p>
+                        </div>
+                        <Select 
+                          value={draftSettings.preferredAudioLanguage || 'auto'}
+                          onValueChange={(v) => updateDraft('preferredAudioLanguage', v === 'auto' ? '' : v)}
+                          disabled={isGuest}
+                        >
+                          <SelectTrigger className="w-32">
+                            <SelectValue placeholder="Auto" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="auto">Auto</SelectItem>
+                            <SelectItem value="en">English</SelectItem>
+                            <SelectItem value="sv">Svenska</SelectItem>
+                            <SelectItem value="de">Deutsch</SelectItem>
+                            <SelectItem value="fr">Français</SelectItem>
+                            <SelectItem value="es">Español</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </ProtectedSetting>
+                    <Separator />
+                    <ProtectedSetting>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <Label>{t('settings.preferredSubtitleLanguage')}</Label>
+                          <p className="text-sm text-muted-foreground">Default subtitle language</p>
+                        </div>
+                        <Select 
+                          value={draftSettings.preferredSubtitleLanguage || 'off'}
+                          onValueChange={(v) => updateDraft('preferredSubtitleLanguage', v === 'off' ? '' : v)}
+                          disabled={isGuest}
+                        >
+                          <SelectTrigger className="w-32">
+                            <SelectValue placeholder="Off" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="off">Off</SelectItem>
+                            <SelectItem value="en">English</SelectItem>
+                            <SelectItem value="sv">Svenska</SelectItem>
+                            <SelectItem value="de">Deutsch</SelectItem>
+                            <SelectItem value="fr">Français</SelectItem>
+                            <SelectItem value="es">Español</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </ProtectedSetting>
                   </CardContent>
                 </Card>
               </>
@@ -375,24 +559,27 @@ export default function SettingsPage() {
             {activeSection === "parental" && (
               <Card variant="glass">
                 <CardHeader>
-                  <CardTitle>Parental Controls</CardTitle>
-                  <CardDescription>Restrict access to certain content</CardDescription>
+                  <CardTitle>{t('settings.parentalControls')}</CardTitle>
+                  <CardDescription>{t('settings.parentalControlsDesc')}</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <Label>Enable Parental Controls</Label>
-                      <p className="text-sm text-muted-foreground">Require PIN for restricted content</p>
+                  <ProtectedSetting>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <Label>{t('settings.enableParentalControls')}</Label>
+                        <p className="text-sm text-muted-foreground">{t('settings.parentalControlsDesc')}</p>
+                      </div>
+                      <Switch
+                        checked={draftSettings.parentalEnabled}
+                        onCheckedChange={(v) => updateDraft('parentalEnabled', v)}
+                        disabled={isGuest}
+                      />
                     </div>
-                    <Switch
-                      checked={settings.parentalEnabled}
-                      onCheckedChange={(v) => updateSetting("parentalEnabled", v)}
-                    />
-                  </div>
-                  {settings.parentalEnabled && (
+                  </ProtectedSetting>
+                  {draftSettings.parentalEnabled && !isGuest && (
                     <>
                       <Separator />
-                      <Button variant="outline">Set PIN Code</Button>
+                      <Button variant="outline">{t('settings.setPin')}</Button>
                     </>
                   )}
                 </CardContent>
@@ -409,9 +596,9 @@ export default function SettingsPage() {
                         <Zap className="w-6 h-6 text-primary-foreground" />
                       </div>
                       <div className="flex-1">
-                        <h3 className="text-lg font-semibold">Free Trial</h3>
+                        <h3 className="text-lg font-semibold">{t('subscription.freeTrial')}</h3>
                         <p className="text-sm text-muted-foreground mb-4">
-                          {trialDaysRemaining} days remaining in your trial
+                          {t('subscription.daysRemaining', { days: trialDaysRemaining })}
                         </p>
                         <div className="w-full bg-muted rounded-full h-2 mb-4">
                           <div
@@ -420,7 +607,7 @@ export default function SettingsPage() {
                           />
                         </div>
                         <Button variant="premium" size="lg">
-                          Upgrade to Premium • {APP_CONFIG.subscription.pricePerYear} {APP_CONFIG.subscription.currency}/year
+                          {t('subscription.upgradeToPremium')} • {APP_CONFIG.subscription.pricePerYear} {APP_CONFIG.subscription.currency}/year
                         </Button>
                       </div>
                     </div>
@@ -429,7 +616,7 @@ export default function SettingsPage() {
 
                 <Card variant="glass">
                   <CardHeader>
-                    <CardTitle>Premium Features</CardTitle>
+                    <CardTitle>{t('subscription.premiumFeatures')}</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <ul className="space-y-3">
@@ -494,6 +681,17 @@ export default function SettingsPage() {
             )}
           </div>
         </div>
+
+        {/* Save Bar */}
+        <SettingsSaveBar />
+
+        {/* Unsaved Changes Dialog */}
+        <UnsavedChangesDialog
+          open={showUnsavedDialog}
+          onOpenChange={setShowUnsavedDialog}
+          onConfirm={handleConfirmNavigation}
+          onCancel={handleCancelNavigation}
+        />
       </div>
     </AppLayout>
   );

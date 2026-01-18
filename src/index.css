@@ -95,7 +95,73 @@
     --epg-selected: 187 50% 20%;
   }
 
-  /* Dark mode is default, but keep class for potential light mode later */
+  /* Light theme */
+  .light {
+    --background: 0 0% 100%;
+    --foreground: 222 47% 11%;
+    
+    --card: 0 0% 98%;
+    --card-foreground: 222 47% 11%;
+    
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    
+    --primary: 187 85% 43%;
+    --primary-foreground: 0 0% 100%;
+    
+    --secondary: 187 20% 92%;
+    --secondary-foreground: 187 85% 35%;
+    
+    --muted: 220 14% 96%;
+    --muted-foreground: 215 16% 47%;
+    
+    --accent: 187 100% 35%;
+    --accent-foreground: 0 0% 100%;
+    
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+    
+    --warning: 38 92% 50%;
+    --warning-foreground: 222 47% 11%;
+    
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 187 85% 43%;
+    
+    /* Sidebar */
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 222 47% 26%;
+    --sidebar-primary: 187 85% 43%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 187 20% 92%;
+    --sidebar-accent-foreground: 187 85% 35%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 187 85% 43%;
+    
+    /* Shadows for light mode */
+    --shadow-sm: 0 1px 2px hsl(220 13% 46% / 0.1);
+    --shadow-md: 0 4px 12px hsl(220 13% 46% / 0.15);
+    --shadow-lg: 0 8px 24px hsl(220 13% 46% / 0.2);
+    --shadow-glow: 0 0 15px hsl(187 85% 43% / 0.2);
+    --shadow-glow-lg: 0 0 30px hsl(187 85% 43% / 0.3);
+    
+    /* Player specific - light mode */
+    --player-bg: 220 14% 96%;
+    --player-controls: 0 0% 100%;
+    --player-progress: 187 85% 43%;
+    --player-buffer: 220 13% 85%;
+    
+    /* EPG specific - light mode */
+    --epg-now: 187 85% 43%;
+    --epg-past: 220 14% 90%;
+    --epg-future: 0 0% 98%;
+    --epg-selected: 187 50% 90%;
+  }
+
+  /* Dark mode - default */
   .dark {
     --background: 222 47% 6%;
     --foreground: 210 40% 98%;
