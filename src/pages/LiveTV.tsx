@@ -97,6 +97,19 @@ export default function LiveTVPage() {
     }
   }, [channelId, addToRecentlyWatched]);
 
+  // Escape key to close expanded player
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isExpandedPlayer) {
+        e.preventDefault();
+        setIsExpandedPlayer(false);
+      }
+    };
+    
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isExpandedPlayer]);
+
   const handleSelectChannel = useCallback((channel: Channel) => {
     navigate(`/live?channel=${channel.id}`);
   }, [navigate]);
