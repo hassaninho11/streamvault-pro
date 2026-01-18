@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
-type ProxyRequestType = 'test' | 'fetch' | 'epg' | 'xtream_live' | 'xtream_vod' | 'xtream_series';
+type ProxyRequestType = 'test' | 'fetch' | 'epg' | 'xtream_live' | 'xtream_vod' | 'xtream_series' | 'xtream_action';
 
 interface ProxyRequest {
   url: string;
@@ -75,7 +75,7 @@ serve(async (req: Request) => {
     console.log(`[playlist-proxy] Request type: ${type}`);
 
     // Handle Xtream API requests
-    if (type === 'xtream_live' || type === 'xtream_vod' || type === 'xtream_series') {
+    if (type === 'xtream_live' || type === 'xtream_vod' || type === 'xtream_series' || type === 'xtream_action') {
       return await handleXtreamRequest(body, type);
     }
 
@@ -323,8 +323,18 @@ async function handleXtreamRequest(body: ProxyRequest, type: ProxyRequestType) {
     case 'xtream_series':
       apiUrl = `${cleanHost}/player_api.php?username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}&action=get_series`;
       break;
+    case 'xtream_action':
+      // Custom action - use the action parameter directly
+      if (!action) {
+        return new Response(
+          JSON.stringify({ error: 'Action is required for xtream_action type' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      apiUrl = `${cleanHost}/player_api.php?username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}&action=${action}`;
+      break;
     default:
-      // Generic action
+      // Fallback - generic action
       apiUrl = `${cleanHost}/player_api.php?username=${encodeURIComponent(username)}&password=${encodeURIComponent(password)}${action ? `&action=${action}` : ''}`;
   }
 

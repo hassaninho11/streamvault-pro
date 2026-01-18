@@ -224,12 +224,14 @@ class VodServiceClass {
       const numericId = seriesId.split('-').pop();
       const cleanHost = host.replace(/\/+$/, '');
       
+      console.log(`[VodService] Loading series info for: ${seriesId}, numericId: ${numericId}`);
+      
       const { data, error } = await supabase.functions.invoke('playlist-proxy', {
         body: { 
           host, 
           username, 
           password, 
-          type: 'xtream_live', // Use generic action
+          type: 'xtream_action',
           action: `get_series_info&series_id=${numericId}`
         }
       });
