@@ -33,7 +33,7 @@ import { usePip } from "@/services/PipService";
 import { useMultiScreen } from "@/contexts/MultiScreenContext";
 import { QualitySelector, QualityLevel } from "./QualitySelector";
 import { PlaybackBlockedScreen } from "./PlaybackBlockedScreen";
-import { UnsupportedFormatScreen } from "./UnsupportedFormatScreen";
+import { MkvCompatibilityScreen, MkvAction } from "./MkvCompatibilityScreen";
 import { localStore } from "@/data/stores/localStore";
 import { toast } from "sonner";
 import {
@@ -43,7 +43,14 @@ import {
   Platform,
   buildProxyUrl,
   isHlsUrl,
+  detectPlatform,
 } from "@/player/PlaybackPreflight";
+import {
+  performMediaPreflightSync,
+  MkvPreflightResult,
+  isUnsupportedContainer,
+  detectContainerFromUrl,
+} from "@/player/MediaPreflight";
 import { getCastController } from "@/player/CastController";
 
 interface VideoPlayerProps {
@@ -77,8 +84,10 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
   const [showBlockedScreen, setShowBlockedScreen] = useState(false);
   const [preflightResult, setPreflightResult] = useState<PreflightResult | null>(null);
   
-  // Unsupported format state
-  const [unsupportedFormat, setUnsupportedFormat] = useState<{ format: string; url: string } | null>(null);
+  // MKV/Unsupported format state
+  const [mkvPreflight, setMkvPreflight] = useState<MkvPreflightResult | null>(null);
+  const [showMkvScreen, setShowMkvScreen] = useState(false);
+  const [mkvRetrying, setMkvRetrying] = useState(false);
   const [isUsingProxy, setIsUsingProxy] = useState(false);
   
   // Quality levels state
@@ -160,7 +169,9 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
     setError(null);
     setIsBuffering(true);
     setShowBlockedScreen(false);
-    setUnsupportedFormat(null);
+    setShowMkvScreen(false);
+    setMkvPreflight(null);
+    setMkvRetrying(false);
     setIsUsingProxy(false);
     setQualityLevels([]);
     setIsPlaying(false);
@@ -254,14 +265,12 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
       if (isCancelled) return;
       
       // Check if this is an unsupported format (MKV, AVI, WMV, FLV)
-      const lowerUrl = originalUrl.toLowerCase();
-      const unsupportedExtensions = ['.mkv', '.avi', '.wmv', '.flv'];
-      const isUnsupportedFormat = unsupportedExtensions.some(ext => lowerUrl.includes(ext));
+      const isUnsupportedFormatFlag = isUnsupportedContainer(originalUrl);
       
       // Build list of URLs to try (with fallbacks)
       const urlsToTry: string[] = [];
       
-      if (isUnsupportedFormat && isXtreamStyle) {
+      if (isUnsupportedFormatFlag && isXtreamStyle) {
         // For unsupported formats on Xtream servers, try HLS version first
         // Xtream servers typically support HLS for VOD content
         // Replace container extension with .m3u8
@@ -299,14 +308,14 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
       
       const showFinalError = () => {
         // Check if this is an unsupported format issue (MKV, AVI, etc.)
-        if (isUnsupportedFormat) {
-          // Extract the format extension
-          const formatMatch = originalUrl.match(/\.(mkv|avi|wmv|flv)(\?|$)/i);
-          const format = formatMatch ? formatMatch[1] : 'mkv';
+        if (isUnsupportedFormatFlag) {
+          // Perform MKV preflight to determine best strategy
+          const mediaPreflight = performMediaPreflightSync(originalUrl);
           
           setIsBuffering(false);
-          setUnsupportedFormat({ format, url: originalUrl });
-          console.log(`[VideoPlayer] Showing unsupported format screen for ${format}`);
+          setMkvPreflight(mediaPreflight);
+          setShowMkvScreen(true);
+          console.log(`[VideoPlayer] Showing MKV compatibility screen for ${mediaPreflight.mediaInfo.container}`);
           return;
         }
         
@@ -722,18 +731,81 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
     );
   }
   
-  // Show unsupported format screen
-  if (unsupportedFormat) {
+  // Show MKV compatibility screen with platform-specific options
+  if (showMkvScreen && mkvPreflight) {
+    const handleMkvAction = async (action: MkvAction) => {
+      const streamUrl = directStreamUrl || channel?.streamUrl || '';
+      
+      switch (action) {
+        case 'vlc_fallback':
+          // TODO: Use VLC engine when native bridge is implemented
+          toast.info('VLC-läge är inte tillgängligt i webbversionen');
+          break;
+          
+        case 'external_vlc':
+          // Already handled in component
+          break;
+          
+        case 'external_mx':
+          // Already handled in component
+          break;
+          
+        case 'copy_url':
+          // Already handled in component
+          break;
+          
+        case 'cast':
+          setShowMkvScreen(false);
+          setShowBlockedScreen(true);
+          break;
+          
+        case 'retry_native':
+          setMkvRetrying(true);
+          setShowMkvScreen(false);
+          setIsBuffering(true);
+          // Try direct playback
+          if (videoRef.current) {
+            videoRef.current.src = streamUrl;
+            videoRef.current.load();
+            try {
+              await videoRef.current.play();
+            } catch (e) {
+              console.error('[VideoPlayer] Native retry failed:', e);
+              setMkvRetrying(false);
+              setShowMkvScreen(true);
+              toast.error('Kunde inte spela med standardspelaren');
+            }
+          }
+          break;
+      }
+    };
+    
+    const handleRememberChoice = async (choice: 'vlc' | 'native') => {
+      const settings = await localStore.getSettings();
+      await localStore.saveSettings({
+        ...settings,
+        playerSettings: {
+          ...settings.playerSettings,
+          mkvPlayerPreference: choice,
+        },
+      });
+      toast.success(`Sparade inställning: ${choice === 'vlc' ? 'VLC-läge' : 'Standardspelare'}`);
+    };
+    
     return (
       <div className={cn("bg-player-bg rounded-xl aspect-video", className)}>
-        <UnsupportedFormatScreen
-          streamUrl={unsupportedFormat.url}
-          format={unsupportedFormat.format}
+        <MkvCompatibilityScreen
+          streamUrl={mkvPreflight.mediaInfo.url}
+          format={mkvPreflight.mediaInfo.container}
           title={vodTitle || channel?.name}
+          platform={mkvPreflight.platform}
+          onAction={handleMkvAction}
           onCancel={() => {
-            setUnsupportedFormat(null);
+            setShowMkvScreen(false);
             navigate(-1);
           }}
+          onRememberChoice={handleRememberChoice}
+          isRetrying={mkvRetrying}
           className="h-full"
         />
       </div>

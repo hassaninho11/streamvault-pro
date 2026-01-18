@@ -51,6 +51,7 @@ export interface LocalSettings {
     bufferSize: number;
     customProxyUrl?: string; // Custom stream proxy URL
     httpStreamStrategy?: 'auto' | 'proxy_https' | 'cast_chromecast' | 'external_player'; // Remember choice for HTTP streams
+    mkvPlayerPreference?: 'auto' | 'native' | 'vlc'; // Preferred player for MKV files
   };
   selectedProfileId?: string;
   updatedAt: number;
