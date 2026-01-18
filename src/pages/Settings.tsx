@@ -19,7 +19,7 @@ import {
   AlertCircle,
   LogIn,
 } from "lucide-react";
-import { useNavigate, useBlocker } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -70,7 +70,6 @@ export default function SettingsPage() {
   
   const [activeSection, setActiveSection] = useState("account");
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
-  const [pendingNavigation, setPendingNavigation] = useState<string | null>(null);
 
   // Load settings on mount
   useEffect(() => {
@@ -79,29 +78,27 @@ export default function SettingsPage() {
     }
   }, [load, initialized]);
 
-  // Block navigation when dirty
-  const blocker = useBlocker(isDirty);
-  
+  // Warn before leaving page with unsaved changes (browser navigation)
   useEffect(() => {
-    if (blocker.state === 'blocked') {
-      setShowUnsavedDialog(true);
-    }
-  }, [blocker.state]);
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isDirty) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isDirty]);
 
   const handleConfirmNavigation = useCallback(() => {
     resetDraft();
     setShowUnsavedDialog(false);
-    if (blocker.state === 'blocked') {
-      blocker.proceed();
-    }
-  }, [resetDraft, blocker]);
+  }, [resetDraft]);
 
   const handleCancelNavigation = useCallback(() => {
     setShowUnsavedDialog(false);
-    if (blocker.state === 'blocked') {
-      blocker.reset();
-    }
-  }, [blocker]);
+  }, []);
 
   // Helper to check if a setting is protected
   const isProtected = (key: string): boolean => {
