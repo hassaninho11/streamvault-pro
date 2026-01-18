@@ -49,6 +49,20 @@ export {
   type PreflightOptions,
 } from './PlaybackPreflight';
 
+// Media Preflight (MKV detection)
+export {
+  performMediaPreflight,
+  performMediaPreflightSync,
+  detectContainerFromUrl,
+  isUnsupportedContainer,
+  isMkvUrl,
+  isBrowserPlayable,
+  type ContainerFormat,
+  type MediaInfo,
+  type MkvPreflightResult,
+  type MkvPlayerPreference,
+} from './MediaPreflight';
+
 export {
   executeStrategy,
   resolvePlayback,

@@ -65,6 +65,8 @@ export default function SettingsPage() {
     audioLanguage: "",
     // Stream proxy settings
     customProxyUrl: "",
+    // MKV settings
+    mkvPlayerPreference: "auto" as 'auto' | 'native' | 'vlc',
   });
 
   // Load settings from localStore on mount
@@ -245,6 +247,23 @@ export default function SettingsPage() {
                           <SelectItem value="low-latency">Low Latency</SelectItem>
                           <SelectItem value="balanced">Balanced</SelectItem>
                           <SelectItem value="stability">Stability</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <Separator />
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <Label>MKV-spelare</Label>
+                        <p className="text-sm text-muted-foreground">Välj spelare för MKV och andra containerformat</p>
+                      </div>
+                      <Select value={settings.mkvPlayerPreference} onValueChange={(v) => updateSetting("mkvPlayerPreference", v as 'auto' | 'native' | 'vlc')}>
+                        <SelectTrigger className="w-48">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="auto">Auto (Rekommenderad)</SelectItem>
+                          <SelectItem value="native">Native (Standard)</SelectItem>
+                          <SelectItem value="vlc">VLC (Kompatibilitet)</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
