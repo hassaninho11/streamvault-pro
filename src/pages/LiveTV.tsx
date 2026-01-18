@@ -145,24 +145,24 @@ export default function LiveTVPage() {
   if (isVodMode && vodUrl) {
     return (
       <AppLayout>
-        <div className="flex flex-col h-[calc(100vh-3.5rem)] lg:h-screen p-4">
-          {/* Back button and title */}
-          <div className="flex items-center gap-4 mb-4">
-            <Button variant="ghost" onClick={() => navigate(-1)}>
-              ← Tillbaka
+        <div className="flex flex-col h-[calc(100vh-3.5rem)] lg:h-screen p-2 sm:p-4">
+          {/* Back button and title - responsive */}
+          <div className="flex items-center gap-2 sm:gap-4 mb-2 sm:mb-4 min-w-0">
+            <Button variant="ghost" size="sm" className="shrink-0 px-2 sm:px-4" onClick={() => navigate(-1)}>
+              ← <span className="hidden sm:inline ml-1">Tillbaka</span>
             </Button>
             {vodTitle && (
-              <h1 className="text-xl font-semibold truncate">{vodTitle}</h1>
+              <h1 className="text-sm sm:text-xl font-semibold truncate min-w-0 flex-1">{vodTitle}</h1>
             )}
           </div>
           
-          {/* VOD Player */}
-          <div className="flex-1">
+          {/* VOD Player - full width */}
+          <div className="flex-1 min-h-0">
             <VideoPlayer
               channel={null}
               directStreamUrl={vodUrl}
               vodTitle={vodTitle || undefined}
-              className="h-full"
+              className="h-full w-full"
             />
           </div>
         </div>
