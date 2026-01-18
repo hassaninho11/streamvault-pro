@@ -245,51 +245,19 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
       
       if (isCancelled) return;
       
-      // Check if this is an unsupported format that browsers can't play directly
-      const lowerOriginalUrl = originalUrl.toLowerCase();
-      const isUnsupportedFormat = lowerOriginalUrl.includes('.mkv') || lowerOriginalUrl.includes('.avi') || 
-                                  lowerOriginalUrl.includes('.wmv') || lowerOriginalUrl.includes('.flv');
-      
       // Build list of URLs to try (with fallbacks)
-      let urlsToTry: string[] = [];
+      // For VOD, just try the direct URL - browser will handle supported formats
+      // MKV files won't work in browser but that's expected behavior
+      const urlsToTry: string[] = [playbackUrl];
       
-      // For unsupported formats (MKV, AVI, etc), DON'T try the direct URL at all
-      // Instead, convert to HLS version (.m3u8) which Xtream servers support
-      if (isUnsupportedFormat && directStreamUrl) {
-        // Replace extension with .m3u8 for HLS version
-        const hlsUrl = originalUrl.replace(/\.(mkv|avi|wmv|flv)(\?.*)?$/i, '.m3u8$2');
-        if (hlsUrl !== originalUrl) {
-          urlsToTry.push(hlsUrl);
-          console.log('[VideoPlayer] Using HLS version for unsupported format:', hlsUrl.substring(0, 80));
-        }
-        
-        // Add proxy fallback for the original URL (proxy might transcode it)
-        const proxyFallback = buildProxyUrl(originalUrl);
-        if (proxyFallback) {
-          urlsToTry.push(proxyFallback);
-          console.log('[VideoPlayer] Added proxy fallback for unsupported format');
-        }
-      } else {
-        // For supported formats, try direct URL first
-        urlsToTry.push(playbackUrl);
-        
-        // Add original without .m3u8 as fallback for Xtream URLs
-        if (isXtreamStyle && originalUrl.endsWith('.m3u8')) {
-          const withoutExt = originalUrl.replace('.m3u8', '');
-          if (usingProxy) {
-            const fallbackProxy = buildProxyUrl(withoutExt);
-            if (fallbackProxy) urlsToTry.push(fallbackProxy);
-          } else {
-            urlsToTry.push(withoutExt);
-          }
-        }
-        
-        // Add proxy as fallback for VOD content
-        if (!isHls && directStreamUrl) {
-          const proxyFallback = buildProxyUrl(originalUrl);
-          if (proxyFallback && !urlsToTry.includes(proxyFallback)) {
-            urlsToTry.push(proxyFallback);
-          }
+      // Add original without .m3u8 as fallback for Xtream URLs
+      if (isXtreamStyle && originalUrl.endsWith('.m3u8')) {
+        const withoutExt = originalUrl.replace('.m3u8', '');
+        if (usingProxy) {
+          const fallbackProxy = buildProxyUrl(withoutExt);
+          if (fallbackProxy) urlsToTry.push(fallbackProxy);
+        } else {
+          urlsToTry.push(withoutExt);
         }
       }
       
