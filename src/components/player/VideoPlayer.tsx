@@ -245,42 +245,51 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
       
       if (isCancelled) return;
       
+      // Check if this is an unsupported format that browsers can't play directly
+      const lowerOriginalUrl = originalUrl.toLowerCase();
+      const isUnsupportedFormat = lowerOriginalUrl.includes('.mkv') || lowerOriginalUrl.includes('.avi') || 
+                                  lowerOriginalUrl.includes('.wmv') || lowerOriginalUrl.includes('.flv');
+      
       // Build list of URLs to try (with fallbacks)
-      const urlsToTry: string[] = [playbackUrl];
+      let urlsToTry: string[] = [];
       
-      // Add original without .m3u8 as fallback for Xtream URLs
-      if (isXtreamStyle && originalUrl.endsWith('.m3u8')) {
-        const withoutExt = originalUrl.replace('.m3u8', '');
-        if (usingProxy) {
-          const fallbackProxy = buildProxyUrl(withoutExt);
-          if (fallbackProxy) urlsToTry.push(fallbackProxy);
-        } else {
-          urlsToTry.push(withoutExt);
+      // For unsupported formats (MKV, AVI, etc), DON'T try the direct URL at all
+      // Instead, convert to HLS version (.m3u8) which Xtream servers support
+      if (isUnsupportedFormat && directStreamUrl) {
+        // Replace extension with .m3u8 for HLS version
+        const hlsUrl = originalUrl.replace(/\.(mkv|avi|wmv|flv)(\?.*)?$/i, '.m3u8$2');
+        if (hlsUrl !== originalUrl) {
+          urlsToTry.push(hlsUrl);
+          console.log('[VideoPlayer] Using HLS version for unsupported format:', hlsUrl.substring(0, 80));
         }
-      }
-      
-      // For VOD content (non-HLS), PRIORITIZE proxy for MKV/AVI/WMV as browsers can't play them directly
-      // The browser CANNOT play .mkv, .avi, .wmv files directly - they need transcoding via proxy or HLS
-      if (!isHls && directStreamUrl) {
-        const lowerUrl = originalUrl.toLowerCase();
-        const needsProxy = lowerUrl.includes('.mkv') || lowerUrl.includes('.avi') || 
-                          lowerUrl.includes('.wmv') || lowerUrl.includes('.flv');
         
-        if (needsProxy) {
-          // For unsupported formats, try proxy FIRST (or HLS version)
-          // Try HLS version first (Xtream servers often support this)
-          const hlsUrl = originalUrl.replace(/\.(mkv|avi|wmv|flv)(\?.*)?$/i, '.m3u8$2');
-          if (hlsUrl !== originalUrl) {
-            urlsToTry.unshift(hlsUrl);
-            console.log('[VideoPlayer] Added HLS version as primary for VOD:', hlsUrl.substring(0, 60));
+        // Add proxy fallback for the original URL (proxy might transcode it)
+        const proxyFallback = buildProxyUrl(originalUrl);
+        if (proxyFallback) {
+          urlsToTry.push(proxyFallback);
+          console.log('[VideoPlayer] Added proxy fallback for unsupported format');
+        }
+      } else {
+        // For supported formats, try direct URL first
+        urlsToTry.push(playbackUrl);
+        
+        // Add original without .m3u8 as fallback for Xtream URLs
+        if (isXtreamStyle && originalUrl.endsWith('.m3u8')) {
+          const withoutExt = originalUrl.replace('.m3u8', '');
+          if (usingProxy) {
+            const fallbackProxy = buildProxyUrl(withoutExt);
+            if (fallbackProxy) urlsToTry.push(fallbackProxy);
+          } else {
+            urlsToTry.push(withoutExt);
           }
         }
         
-        // Always add proxy as a fallback for VOD content
-        const proxyFallback = buildProxyUrl(originalUrl);
-        if (proxyFallback && !urlsToTry.includes(proxyFallback)) {
-          urlsToTry.push(proxyFallback);
-          console.log('[VideoPlayer] Added proxy fallback for VOD content');
+        // Add proxy as fallback for VOD content
+        if (!isHls && directStreamUrl) {
+          const proxyFallback = buildProxyUrl(originalUrl);
+          if (proxyFallback && !urlsToTry.includes(proxyFallback)) {
+            urlsToTry.push(proxyFallback);
+          }
         }
       }
       
@@ -424,7 +433,12 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
         
         console.log(`[VideoPlayer] Trying URL ${currentUrlIndex}/${urlsToTry.length}:`, url.substring(0, 80) + '...');
         
-        if (isHls) {
+        // Check if THIS specific URL is HLS (not just the original URL)
+        const urlIsHls = url.toLowerCase().includes('.m3u8') || 
+                         url.toLowerCase().includes('mpegurl') ||
+                         /\/live\/[^/]+\/[^/]+\/\d+(?:\?|$)/.test(url);
+        
+        if (urlIsHls) {
           tryHlsPlayback(url, tryNextUrl);
         } else {
           tryDirectPlayback(url, tryNextUrl);
