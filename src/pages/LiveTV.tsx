@@ -259,42 +259,84 @@ export default function LiveTVPage() {
     );
   }
 
-  // Standard Desktop/Mobile Layout
+  // Standard Desktop/Mobile Layout - Channel list primary, mini-player on top
   return (
     <AppLayout>
       <ChannelSearchCommand open={isSearchOpen} onOpenChange={setSearchOpen} />
-      <div className="flex flex-col lg:flex-row h-[calc(100vh-3.5rem)] lg:h-screen">
-        {/* Player Section */}
-        <div className="flex-1 p-4 lg:p-6 flex flex-col">
-          {/* Search hint */}
-          <div className="mb-2 flex justify-end">
+      <div className="flex flex-col h-[calc(100vh-3.5rem)] lg:h-screen">
+        {/* Mini Player Section - Compact at top */}
+        <div className="shrink-0 p-2 sm:p-3 lg:p-4 border-b border-border bg-card/30">
+          <div className="flex items-start gap-3 lg:gap-4">
+            {/* Mini player container - 16:9 aspect ratio, limited height */}
+            <div className="w-48 sm:w-64 md:w-80 lg:w-96 shrink-0">
+              <div className="relative aspect-video rounded-lg overflow-hidden bg-black shadow-lg">
+                <VideoPlayer
+                  channel={selectedChannel}
+                  onPrevious={currentIndex > 0 ? handlePrevious : undefined}
+                  onNext={currentIndex < channels.length - 1 ? handleNext : undefined}
+                  className="absolute inset-0"
+                />
+              </div>
+            </div>
+            
+            {/* Channel info + controls */}
+            <div className="flex-1 min-w-0 py-1">
+              {selectedChannel ? (
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-base sm:text-lg font-semibold truncate">{selectedChannel.name}</h2>
+                    {selectedChannel.isHD && (
+                      <span className="px-1.5 py-0.5 bg-primary/20 text-primary text-xs rounded font-medium shrink-0">HD</span>
+                    )}
+                  </div>
+                  <p className="text-xs sm:text-sm text-muted-foreground truncate">{selectedChannel.group}</p>
+                  {epgData?.now && (
+                    <div className="text-xs text-muted-foreground truncate">
+                      <span className="text-primary">Nu:</span> {epgData.now.title}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-sm text-muted-foreground">
+                  Välj en kanal från listan
+                </div>
+              )}
+              
+              {/* Search hint - desktop */}
+              <div className="hidden md:flex mt-3">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs text-muted-foreground gap-2 h-7 px-2"
+                  onClick={() => setSearchOpen(true)}
+                >
+                  <Search className="w-3 h-3" />
+                  <span>Sök kanal</span>
+                  <kbd className="ml-1 px-1.5 py-0.5 bg-muted rounded text-[10px] font-mono">⌘K</kbd>
+                </Button>
+              </div>
+            </div>
+            
+            {/* Mobile search button */}
             <Button
               variant="ghost"
-              size="sm"
-              className="text-xs text-muted-foreground gap-2"
+              size="icon"
+              className="md:hidden shrink-0"
               onClick={() => setSearchOpen(true)}
             >
-              <Search className="w-3 h-3" />
-              <span>Search</span>
-              <kbd className="ml-1 px-1.5 py-0.5 bg-muted rounded text-[10px] font-mono">⌘K</kbd>
+              <Search className="w-4 h-4" />
             </Button>
           </div>
-          <VideoPlayer
-            channel={selectedChannel}
-            onPrevious={currentIndex > 0 ? handlePrevious : undefined}
-            onNext={currentIndex < channels.length - 1 ? handleNext : undefined}
-            className="flex-1"
-          />
         </div>
 
-        {/* Channel List Sidebar - Using Virtualized for 7000+ channels */}
-        <div className="w-full lg:w-[28rem] xl:w-[36rem] border-t lg:border-t-0 lg:border-l border-border bg-card/30">
+        {/* Channel List - Primary area, takes remaining space */}
+        <div className="flex-1 min-h-0 bg-background">
           <VirtualizedChannelList
             channels={channels}
             selectedChannel={selectedChannel || undefined}
             onSelectChannel={handleSelectChannel}
             onToggleFavorite={handleToggleFavorite}
-            className="h-64 lg:h-full"
+            className="h-full"
           />
         </div>
       </div>
