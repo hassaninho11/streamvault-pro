@@ -11,6 +11,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { EmptyState } from "@/components/ui/custom";
 import { useProviders, CreateProviderData, Provider } from "@/hooks/useProviders";
 import { useVodStore } from "@/data/stores/vodStore";
@@ -21,6 +31,7 @@ export default function ProvidersPage() {
   const { providers, loading, addProvider, updateProvider, deleteProvider, refreshProvider, refetch } = useProviders();
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingProvider, setEditingProvider] = useState<Provider | null>(null);
+  const [providerToDelete, setProviderToDelete] = useState<Provider | null>(null);
   
   // Get VOD counts from store
   const { movies, series } = useVodStore();
@@ -115,8 +126,10 @@ export default function ProvidersPage() {
     }
   };
 
-  const handleDeleteProvider = async (id: string) => {
-    await deleteProvider(id);
+  const handleDeleteProvider = async () => {
+    if (!providerToDelete) return;
+    await deleteProvider(providerToDelete.id);
+    setProviderToDelete(null);
   };
 
   const handleRefreshProvider = async (id: string) => {
@@ -211,7 +224,7 @@ export default function ProvidersPage() {
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             className="text-destructive"
-                            onClick={() => handleDeleteProvider(provider.id)}
+                            onClick={() => setProviderToDelete(provider)}
                           >
                             <Trash2 className="w-4 h-4 mr-2" />
                             Ta bort
@@ -274,6 +287,29 @@ export default function ProvidersPage() {
           }}
           onSave={handleEditProvider}
         />
+
+        {/* Delete Confirmation Dialog */}
+        <AlertDialog open={providerToDelete !== null} onOpenChange={(open) => !open && setProviderToDelete(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Ta bort leverantör?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Är du säker på att du vill ta bort <strong>{providerToDelete?.name}</strong>? 
+                Detta kommer att radera alla kanaler, favoriter och historik kopplat till denna leverantör. 
+                Denna åtgärd kan inte ångras.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Avbryt</AlertDialogCancel>
+              <AlertDialogAction 
+                onClick={handleDeleteProvider}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Ta bort
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </AppLayout>
   );
