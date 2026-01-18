@@ -18,6 +18,10 @@ import {
   Server,
   AlertCircle,
   LogIn,
+  Cloud,
+  RefreshCw,
+  LogOut,
+  ChevronRight,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
@@ -29,6 +33,7 @@ import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { CacheManagement } from "@/components/settings/CacheManagement";
 import { SettingsSaveBar } from "@/components/settings/SettingsSaveBar";
 import { ProtectedSetting } from "@/components/settings/ProtectedSetting";
@@ -38,6 +43,7 @@ import { cn } from "@/lib/utils";
 import { useSettingsStore, PROTECTED_SETTINGS } from "@/data/stores/settingsStore";
 import { useAuth } from "@/hooks/useAuth";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { syncEngine, SyncStatus } from "@/data/stores/syncEngine";
 
 interface SettingsSection {
   id: string;
@@ -57,7 +63,7 @@ const sections: SettingsSection[] = [
 export default function SettingsPage() {
   const navigate = useNavigate();
   const { t } = useLanguage();
-  const { user, isGuest } = useAuth();
+  const { user, isGuest, signOut } = useAuth();
   const { 
     draftSettings, 
     isDirty, 
@@ -70,6 +76,7 @@ export default function SettingsPage() {
   
   const [activeSection, setActiveSection] = useState("account");
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>({ isSyncing: false, pendingChanges: 0 });
 
   // Load settings on mount
   useEffect(() => {
@@ -77,6 +84,13 @@ export default function SettingsPage() {
       load();
     }
   }, [load, initialized]);
+
+  // Subscribe to sync status
+  useEffect(() => {
+    syncEngine.getStatus().then(setSyncStatus);
+    const unsubscribe = syncEngine.subscribe(setSyncStatus);
+    return unsubscribe;
+  }, []);
 
   // Warn before leaving page with unsaved changes (browser navigation)
   useEffect(() => {
@@ -184,12 +198,12 @@ export default function SettingsPage() {
                       <div className="flex-1">
                         <p className="font-semibold">{user?.email || 'Guest User'}</p>
                         <p className="text-sm text-muted-foreground">
-                          {isGuest ? 'Not logged in' : user?.email}
+                          {isGuest ? 'Not logged in - data stored locally only' : 'Logged in with cloud sync'}
                         </p>
                       </div>
                       {isGuest ? (
                         <Button 
-                          variant="default" 
+                          variant="glow" 
                           size="sm"
                           onClick={() => navigate('/auth')}
                         >
@@ -197,11 +211,68 @@ export default function SettingsPage() {
                           Log In
                         </Button>
                       ) : (
-                        <Button variant="outline" size="sm">
-                          {t('settings.editProfile')}
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => signOut(false)}
+                        >
+                          <LogOut className="w-4 h-4 mr-2" />
+                          Log Out
                         </Button>
                       )}
                     </div>
+                  </CardContent>
+                </Card>
+
+                {/* Sync & Backup Card */}
+                <Card variant="glass">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Cloud className="w-5 h-5" />
+                      Sync & Backup
+                    </CardTitle>
+                    <CardDescription>
+                      {isGuest 
+                        ? "Log in to sync your data across devices"
+                        : "Your data is synced to the cloud"
+                      }
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {!isGuest && (
+                      <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
+                        <div className="flex items-center gap-3">
+                          <RefreshCw className={cn(
+                            "w-4 h-4",
+                            syncStatus.isSyncing && "animate-spin text-primary"
+                          )} />
+                          <div>
+                            <p className="text-sm font-medium">
+                              {syncStatus.isSyncing ? 'Syncing...' : 'Synced'}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {syncStatus.lastSyncAt 
+                                ? `Last: ${new Date(syncStatus.lastSyncAt).toLocaleString()}`
+                                : 'Not yet synced'}
+                            </p>
+                          </div>
+                        </div>
+                        {syncStatus.pendingChanges > 0 && (
+                          <Badge variant="secondary">{syncStatus.pendingChanges} pending</Badge>
+                        )}
+                      </div>
+                    )}
+                    <Button 
+                      variant="outline" 
+                      className="w-full justify-between"
+                      onClick={() => navigate('/sync')}
+                    >
+                      <span className="flex items-center gap-2">
+                        <Cloud className="w-4 h-4" />
+                        Manage Sync & Backup
+                      </span>
+                      <ChevronRight className="w-4 h-4" />
+                    </Button>
                   </CardContent>
                 </Card>
 
