@@ -23,6 +23,7 @@ import {
   LogOut,
   ChevronRight,
   Layers,
+  ListMusic,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
@@ -40,6 +41,7 @@ import { SettingsSaveBar } from "@/components/settings/SettingsSaveBar";
 import { ProtectedSetting } from "@/components/settings/ProtectedSetting";
 import { UnsavedChangesDialog } from "@/components/settings/UnsavedChangesDialog";
 import { CategoryVisibilitySettings } from "@/components/settings/CategoryVisibilitySettings";
+import { PlaylistUpdateSettings } from "@/components/settings/PlaylistUpdateSettings";
 import { APP_CONFIG } from "@/config/app";
 import { cn } from "@/lib/utils";
 import { useSettingsStore, PROTECTED_SETTINGS } from "@/data/stores/settingsStore";
@@ -56,6 +58,7 @@ interface SettingsSection {
 const sections: SettingsSection[] = [
   { id: "account", icon: User, labelKey: "settings.account" },
   { id: "player", icon: Tv, labelKey: "settings.player" },
+  { id: "playlist", icon: ListMusic, labelKey: "Spellista & Uppdatering" },
   { id: "categories", icon: Layers, labelKey: "Kategorier" },
   { id: "parental", icon: Shield, labelKey: "settings.parental" },
   { id: "subscription", icon: CreditCard, labelKey: "settings.subscription" },
@@ -624,6 +627,11 @@ export default function SettingsPage() {
                   </CardContent>
                 </Card>
               </>
+            )}
+
+            {/* Playlist Update Section */}
+            {activeSection === "playlist" && (
+              <PlaylistUpdateSettings />
             )}
 
             {/* Categories Section */}

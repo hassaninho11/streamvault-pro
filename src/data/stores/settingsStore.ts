@@ -45,6 +45,12 @@ export interface AppSettings {
   
   // Player Lock
   playerLockEnabled: boolean;
+  
+  // Playlist Update Settings
+  playlistUpdateIntervalMinutes: number; // 0 = disabled
+  playlistUpdateWifiOnly: boolean;
+  playlistUpdateIdleOnly: boolean;
+  playlistUpdatePauseLowBattery: boolean;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -68,6 +74,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   epgRefreshHours: 6,
   parentalEnabled: false,
   playerLockEnabled: true,
+  // Playlist update defaults
+  playlistUpdateIntervalMinutes: 360, // 6 hours default
+  playlistUpdateWifiOnly: true,
+  playlistUpdateIdleOnly: true,
+  playlistUpdatePauseLowBattery: true,
 };
 
 // Settings that require login to edit
