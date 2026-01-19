@@ -1,5 +1,5 @@
 import { ReactNode, useState } from "react";
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { 
   Home, 
   Tv, 
@@ -25,6 +25,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { ProfileSwitcher } from "@/components/profiles/ProfileSwitcher";
 import { useProfile } from "@/contexts/ProfileContext";
 import { CategoryFilter } from "./CategoryFilter";
+import { useEntitlements } from "@/hooks/useEntitlements";
+import { TrialBadge } from "@/components/trial/TrialBadge";
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -50,8 +52,10 @@ const bottomNavItems = [
 export function AppLayout({ children }: AppLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
-  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
+  const { user, signOut, isGuest } = useAuth();
   const { currentProfile, isChildProfile } = useProfile();
+  const { isPremium, isTrial, isTrialExpired, trialDaysRemaining } = useEntitlements();
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">
@@ -68,6 +72,8 @@ export function AppLayout({ children }: AppLayoutProps) {
           <div className="flex items-center gap-2">
             <Zap className="w-6 h-6 text-primary" />
             <span className="font-bold text-lg">{APP_CONFIG.name}</span>
+            {/* Trial badge in mobile header */}
+            <TrialBadge variant="compact" />
           </div>
           <Button variant="ghost" size="icon" asChild>
             <NavLink to="/search">
@@ -192,19 +198,51 @@ export function AppLayout({ children }: AppLayoutProps) {
               </div>
             )}
 
-            {/* Trial Banner */}
-            <div className="mt-3 p-3 rounded-lg bg-gradient-to-r from-primary/20 to-accent/20 border border-primary/30">
-              <div className="flex items-center gap-2 mb-2">
-                <Zap className="w-4 h-4 text-primary" />
-                <span className="text-sm font-medium">Free Trial</span>
+            {/* Dynamic Trial/Premium Banner */}
+            {!isPremium && (
+              <div className={cn(
+                "mt-3 p-3 rounded-lg border",
+                isTrialExpired 
+                  ? "bg-gradient-to-r from-destructive/20 to-destructive/10 border-destructive/50"
+                  : isTrial && trialDaysRemaining !== undefined && trialDaysRemaining <= 2
+                    ? "bg-gradient-to-r from-warning/20 to-warning/10 border-warning/50"
+                    : "bg-gradient-to-r from-primary/20 to-accent/20 border-primary/30"
+              )}>
+                <div className="flex items-center gap-2 mb-2">
+                  <Zap className={cn(
+                    "w-4 h-4",
+                    isTrialExpired ? "text-destructive" : 
+                    isTrial && trialDaysRemaining !== undefined && trialDaysRemaining <= 2 ? "text-warning" : "text-primary"
+                  )} />
+                  <span className="text-sm font-medium">
+                    {isTrialExpired ? "Trial utgången" : "Provperiod"}
+                  </span>
+                </div>
+                <p className="text-xs text-muted-foreground mb-3">
+                  {isTrialExpired 
+                    ? "Uppgradera för att fortsätta använda appen"
+                    : `${trialDaysRemaining ?? APP_CONFIG.subscription.trialDays} dagar kvar`
+                  }
+                </p>
+                <Button 
+                  size="sm" 
+                  variant={isTrialExpired ? "destructive" : "premium"} 
+                  className="w-full"
+                  onClick={() => navigate("/settings")}
+                >
+                  Uppgradera • {APP_CONFIG.subscription.pricePerYear} {APP_CONFIG.subscription.currency}/år
+                </Button>
               </div>
-              <p className="text-xs text-muted-foreground mb-3">
-                {APP_CONFIG.subscription.trialDays} days remaining
-              </p>
-              <Button size="sm" variant="premium" className="w-full">
-                Upgrade • {APP_CONFIG.subscription.pricePerYear} {APP_CONFIG.subscription.currency}/year
-              </Button>
-            </div>
+            )}
+            
+            {isPremium && (
+              <div className="mt-3 p-3 rounded-lg bg-gradient-to-r from-success/20 to-success/10 border border-success/30">
+                <div className="flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-success" />
+                  <span className="text-sm font-semibold text-success">Premium</span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </aside>

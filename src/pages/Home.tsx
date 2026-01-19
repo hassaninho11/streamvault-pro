@@ -8,7 +8,9 @@ import {
   ChevronRight, 
   Zap,
   TrendingUp,
-  Loader2
+  Loader2,
+  Film,
+  MonitorPlay,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -22,6 +24,8 @@ import { useProviders } from "@/hooks/useProviders";
 import { useRecentlyWatched } from "@/hooks/useRecentlyWatched";
 import { useSettingsStore } from "@/data/stores/settingsStore";
 import { playlistUpdateService } from "@/services/PlaylistUpdateService";
+import { useVodStore } from "@/data/stores/vodStore";
+import { TrialBadge } from "@/components/trial/TrialBadge";
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -34,6 +38,8 @@ export default function HomePage() {
   const nowNextMap = useChannelStore((state) => state.nowNextMap);
   const parseProgress = useChannelStore((state) => state.parseProgress);
   const { currentSettings } = useSettingsStore();
+  const movies = useVodStore((state) => state.movies);
+  const series = useVodStore((state) => state.series);
 
   // Initialize playlist update scheduler on mount
   useEffect(() => {
@@ -89,14 +95,20 @@ export default function HomePage() {
           <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-primary to-accent flex items-center justify-center mb-6 shadow-glow-lg animate-pulse-glow">
             <Zap className="w-10 h-10 text-primary-foreground" />
           </div>
-          <h1 className="text-3xl font-bold mb-2 text-center">Welcome to {APP_CONFIG.name}</h1>
-          <p className="text-xs text-muted-foreground/50 mb-1 font-mono">Build: v2025.01.19-A</p>
+          <h1 className="text-3xl font-bold mb-2 text-center">Välkommen till {APP_CONFIG.name}</h1>
+          <p className="text-xs text-muted-foreground/50 mb-1 font-mono">Build: v2025.01.19-B</p>
+          
+          {/* Trial Badge */}
+          <div className="mb-4">
+            <TrialBadge variant="full" />
+          </div>
+          
           <p className="text-muted-foreground text-center mb-8 max-w-md">
-            Add your first IPTV provider to start watching your favorite channels
+            Lägg till din första IPTV-leverantör för att börja titta
           </p>
           <Button variant="glow" size="lg" onClick={() => navigate("/providers")}>
             <Plus className="w-5 h-5 mr-2" />
-            Add Provider
+            Lägg till leverantör
           </Button>
           
           <div className="mt-12 p-6 rounded-xl bg-muted/30 border border-border max-w-lg">
@@ -268,7 +280,7 @@ export default function HomePage() {
         )}
 
         {/* Quick Stats */}
-        <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <section className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
           <Card variant="glass" className="p-4">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
@@ -276,7 +288,31 @@ export default function HomePage() {
               </div>
               <div>
                 <p className="text-2xl font-bold">{channelCount.toLocaleString()}</p>
-                <p className="text-xs text-muted-foreground">Channels</p>
+                <p className="text-xs text-muted-foreground">Kanaler</p>
+              </div>
+            </div>
+          </Card>
+          
+          <Card variant="glass" className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center">
+                <Film className="w-5 h-5 text-accent" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{movies.length.toLocaleString()}</p>
+                <p className="text-xs text-muted-foreground">Filmer</p>
+              </div>
+            </div>
+          </Card>
+          
+          <Card variant="glass" className="p-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-secondary/10 flex items-center justify-center">
+                <MonitorPlay className="w-5 h-5 text-secondary-foreground" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{series.length.toLocaleString()}</p>
+                <p className="text-xs text-muted-foreground">Serier</p>
               </div>
             </div>
           </Card>
@@ -288,7 +324,7 @@ export default function HomePage() {
               </div>
               <div>
                 <p className="text-2xl font-bold">{favoriteIds.size}</p>
-                <p className="text-xs text-muted-foreground">Favorites</p>
+                <p className="text-xs text-muted-foreground">Favoriter</p>
               </div>
             </div>
           </Card>
@@ -300,19 +336,19 @@ export default function HomePage() {
               </div>
               <div>
                 <p className="text-2xl font-bold">{providerCount}</p>
-                <p className="text-xs text-muted-foreground">Providers</p>
+                <p className="text-xs text-muted-foreground">Leverantörer</p>
               </div>
             </div>
           </Card>
           
           <Card variant="glass" className="p-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center">
-                <Clock className="w-5 h-5 text-accent" />
+              <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
+                <Clock className="w-5 h-5 text-muted-foreground" />
               </div>
               <div>
                 <p className="text-2xl font-bold">{recentIds.length}</p>
-                <p className="text-xs text-muted-foreground">Recently Watched</p>
+                <p className="text-xs text-muted-foreground">Senaste</p>
               </div>
             </div>
           </Card>
