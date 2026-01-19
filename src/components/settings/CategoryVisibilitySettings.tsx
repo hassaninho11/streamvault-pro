@@ -66,7 +66,10 @@ export function CategoryVisibilitySettings() {
     return () => {
       cancelDraft();
     };
-  }, []);
+  }, [startEditing, cancelDraft]);
+  
+  // Guard: don't render until draft is initialized
+  const isInitialized = draftVisibility !== null;
   
   // Build category lists for each section
   const sectionData = useMemo((): Record<CategorySection, SectionData> => {
@@ -185,9 +188,28 @@ export function CategoryVisibilitySettings() {
   // Show warning if no categories are visible
   const showNoVisibleWarning = visibleCount === 0 && draftVisibility;
 
+  // Show loading state while draft is being initialized
+  if (!isInitialized) {
+    return (
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Eye className="w-5 h-5" />
+              Kategorisynlighet
+            </CardTitle>
+            <CardDescription>
+              Laddar kategorier...
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
-      <Card variant="glass">
+      <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Eye className="w-5 h-5" />
