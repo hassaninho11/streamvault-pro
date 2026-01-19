@@ -21,8 +21,9 @@ import {
   CategorySection, 
   createCategoryId 
 } from '@/data/stores/categoryVisibilityStore';
-import { useAllGroups } from '@/data/stores/channelStore';
+import { useChannelStore } from '@/data/stores/channelStore';
 import { useVodStore } from '@/data/stores/vodStore';
+import { getGroupsWithCounts } from '@/core/indexing/channelIndex';
 
 interface CategoryItem {
   id: string;
@@ -40,37 +41,32 @@ export function CategoryVisibilitySettings() {
   const [searchQuery, setSearchQuery] = useState('');
   const hasStartedEditing = useRef(false);
   
-  // Store - use individual selectors to avoid unnecessary re-renders
+  // Store state - individual selectors for stability
   const draftVisibility = useCategoryVisibilityStore((s) => s.draftVisibility);
   const isDirty = useCategoryVisibilityStore((s) => s.isDirty);
   const includeHiddenInSearch = useCategoryVisibilityStore((s) => s.includeHiddenInSearch);
   
-  // Get actions once - these are stable
-  const storeActions = useCategoryVisibilityStore((s) => ({
-    startEditing: s.startEditing,
-    updateDraft: s.updateDraft,
-    setDraftAll: s.setDraftAll,
-    setDraftNone: s.setDraftNone,
-    saveDraft: s.saveDraft,
-    cancelDraft: s.cancelDraft,
-    setIncludeHiddenInSearch: s.setIncludeHiddenInSearch,
-  }));
-  
-  // Get ALL categories from stores (including hidden)
-  const liveGroups = useAllGroups();
+  // Get channel index for groups
+  const channelIndex = useChannelStore((s) => s.index);
   const movies = useVodStore((s) => s.movies);
   const series = useVodStore((s) => s.series);
   
-  // Start editing mode on mount (only once, using ref to prevent double calls)
+  // Compute groups from index (stable reference when index doesn't change)
+  const liveGroups = useMemo(() => {
+    if (!channelIndex) return [];
+    return getGroupsWithCounts(channelIndex);
+  }, [channelIndex]);
+  
+  // Start editing mode on mount (only once)
   useEffect(() => {
     if (!hasStartedEditing.current) {
       hasStartedEditing.current = true;
-      storeActions.startEditing();
+      // Access store directly for actions - they are stable
+      useCategoryVisibilityStore.getState().startEditing();
     }
     return () => {
-      storeActions.cancelDraft();
+      useCategoryVisibilityStore.getState().cancelDraft();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   
   // Build category lists for each section
@@ -154,47 +150,38 @@ export function CategoryVisibilitySettings() {
     return draftVisibility[section].has(categoryId);
   }, [draftVisibility]);
   
+  // Use store.getState() for actions to avoid dependency issues
   const handleToggle = useCallback((categoryId: string, visible: boolean) => {
-    storeActions.updateDraft(activeTab, categoryId, visible);
-  }, [storeActions, activeTab]);
+    useCategoryVisibilityStore.getState().updateDraft(activeTab, categoryId, visible);
+  }, [activeTab]);
   
   const handleSelectAll = useCallback(() => {
-    storeActions.setDraftAll(activeTab, allCategoryIds);
-  }, [storeActions, activeTab, allCategoryIds]);
+    useCategoryVisibilityStore.getState().setDraftAll(activeTab, allCategoryIds);
+  }, [activeTab, allCategoryIds]);
   
   const handleDeselectAll = useCallback(() => {
-    storeActions.setDraftNone(activeTab);
-  }, [storeActions, activeTab]);
+    useCategoryVisibilityStore.getState().setDraftNone(activeTab);
+  }, [activeTab]);
   
   const handleSave = useCallback(() => {
-    storeActions.saveDraft();
+    const store = useCategoryVisibilityStore.getState();
+    store.saveDraft();
     // Re-start editing mode for continued editing
-    storeActions.startEditing();
-  }, [storeActions]);
+    store.startEditing();
+  }, []);
   
   const handleCancel = useCallback(() => {
-    storeActions.cancelDraft();
-    storeActions.startEditing();
-  }, [storeActions]);
+    const store = useCategoryVisibilityStore.getState();
+    store.cancelDraft();
+    store.startEditing();
+  }, []);
   
-  const getSectionIcon = (section: CategorySection) => {
-    switch (section) {
-      case 'live': return Tv;
-      case 'movies': return Film;
-      case 'series': return MonitorPlay;
-    }
-  };
-  
-  const getSectionLabel = (section: CategorySection) => {
-    switch (section) {
-      case 'live': return 'Live TV';
-      case 'movies': return 'Filmer';
-      case 'series': return 'Serier';
-    }
-  };
+  const handleIncludeHiddenChange = useCallback((checked: boolean) => {
+    useCategoryVisibilityStore.getState().setIncludeHiddenInSearch(checked);
+  }, []);
   
   // Show warning if no categories are visible
-  const showNoVisibleWarning = visibleCount === 0 && draftVisibility;
+  const showNoVisibleWarning = visibleCount === 0 && draftVisibility !== null;
   
   // Guard: don't render until draft is initialized
   if (!draftVisibility) {
@@ -231,13 +218,14 @@ export function CategoryVisibilitySettings() {
           {/* Tabs for sections */}
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as CategorySection)}>
             <TabsList className="grid w-full grid-cols-3">
-              {(['live', 'movies', 'series'] as CategorySection[]).map((section) => {
-                const Icon = getSectionIcon(section);
+              {(['live', 'movies', 'series'] as const).map((section) => {
+                const Icon = section === 'live' ? Tv : section === 'movies' ? Film : MonitorPlay;
+                const label = section === 'live' ? 'Live TV' : section === 'movies' ? 'Filmer' : 'Serier';
                 const data = sectionData[section];
                 return (
                   <TabsTrigger key={section} value={section} className="gap-2">
                     <Icon className="w-4 h-4" />
-                    <span className="hidden sm:inline">{getSectionLabel(section)}</span>
+                    <span className="hidden sm:inline">{label}</span>
                     <Badge variant="secondary" className="text-xs">
                       {data.categories.length}
                     </Badge>
@@ -246,7 +234,7 @@ export function CategoryVisibilitySettings() {
               })}
             </TabsList>
             
-            {(['live', 'movies', 'series'] as CategorySection[]).map((section) => (
+            {(['live', 'movies', 'series'] as const).map((section) => (
               <TabsContent key={section} value={section} className="space-y-4 mt-4">
                 {/* Search and bulk actions */}
                 <div className="flex flex-col sm:flex-row gap-3">
@@ -312,37 +300,13 @@ export function CategoryVisibilitySettings() {
                       filteredCategories.map((category) => {
                         const isVisible = isVisibleInDraft(section, category.id);
                         return (
-                          <div
+                          <CategoryRow
                             key={category.id}
-                            className={cn(
-                              "flex items-center justify-between p-3 rounded-lg transition-colors",
-                              "hover:bg-muted/50 focus-within:ring-2 focus-within:ring-primary",
-                              isVisible ? "bg-transparent" : "bg-muted/30 opacity-60"
-                            )}
-                          >
-                            <div className="flex items-center gap-3 flex-1 min-w-0">
-                              <Switch
-                                id={`category-${category.id}`}
-                                checked={isVisible}
-                                onCheckedChange={(checked) => handleToggle(category.id, checked)}
-                                className="shrink-0"
-                              />
-                              <Label
-                                htmlFor={`category-${category.id}`}
-                                className="cursor-pointer flex-1 min-w-0"
-                              >
-                                <span className={cn(
-                                  "block truncate",
-                                  !isVisible && "line-through"
-                                )}>
-                                  {category.name}
-                                </span>
-                              </Label>
-                            </div>
-                            <Badge variant="outline" className="shrink-0 ml-2">
-                              {category.count.toLocaleString()}
-                            </Badge>
-                          </div>
+                            category={category}
+                            section={section}
+                            isVisible={isVisible}
+                            onToggle={handleToggle}
+                          />
                         );
                       })
                     )}
@@ -364,7 +328,7 @@ export function CategoryVisibilitySettings() {
             </div>
             <Switch
               checked={includeHiddenInSearch}
-              onCheckedChange={storeActions.setIncludeHiddenInSearch}
+              onCheckedChange={handleIncludeHiddenChange}
             />
           </div>
           
@@ -382,13 +346,60 @@ export function CategoryVisibilitySettings() {
               <Button variant="outline" onClick={handleCancel}>
                 Avbryt
               </Button>
-              <Button variant="glow" onClick={handleSave}>
+              <Button onClick={handleSave}>
                 Spara ändringar
               </Button>
             </div>
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+// Memoized category row to prevent re-renders
+interface CategoryRowProps {
+  category: CategoryItem;
+  section: CategorySection;
+  isVisible: boolean;
+  onToggle: (categoryId: string, visible: boolean) => void;
+}
+
+function CategoryRow({ category, section, isVisible, onToggle }: CategoryRowProps) {
+  const handleChange = useCallback((checked: boolean) => {
+    onToggle(category.id, checked);
+  }, [category.id, onToggle]);
+  
+  return (
+    <div
+      className={cn(
+        "flex items-center justify-between p-3 rounded-lg transition-colors",
+        "hover:bg-muted/50 focus-within:ring-2 focus-within:ring-primary",
+        isVisible ? "bg-transparent" : "bg-muted/30 opacity-60"
+      )}
+    >
+      <div className="flex items-center gap-3 flex-1 min-w-0">
+        <Switch
+          id={`category-${section}-${category.id}`}
+          checked={isVisible}
+          onCheckedChange={handleChange}
+          className="shrink-0"
+        />
+        <Label
+          htmlFor={`category-${section}-${category.id}`}
+          className="cursor-pointer flex-1 min-w-0"
+        >
+          <span className={cn(
+            "block truncate",
+            !isVisible && "line-through"
+          )}>
+            {category.name}
+          </span>
+        </Label>
+      </div>
+      <Badge variant="outline" className="shrink-0 ml-2">
+        {category.count.toLocaleString()}
+      </Badge>
     </div>
   );
 }
