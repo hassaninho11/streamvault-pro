@@ -60,13 +60,14 @@ export function CategoryVisibilitySettings() {
   const movies = useVodStore((s) => s.movies);
   const series = useVodStore((s) => s.series);
   
-  // Start editing mode on mount
+  // Start editing mode on mount (only once)
   useEffect(() => {
     startEditing();
     return () => {
       cancelDraft();
     };
-  }, [startEditing, cancelDraft]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty deps - these are stable Zustand actions
   
   // Guard: don't render until draft is initialized
   const isInitialized = draftVisibility !== null;
