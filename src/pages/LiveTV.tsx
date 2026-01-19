@@ -2,7 +2,7 @@ import { useMemo, useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { Loader2, Tv, Search, Maximize2, Minimize2 } from "lucide-react";
 import { AppLayout } from "@/components/layout/AppLayout";
-import { VideoPlayer } from "@/components/player/VideoPlayer";
+import { SmartPlayer } from "@/components/player/SmartPlayer";
 import { VirtualizedChannelList } from "@/components/channels/VirtualizedChannelList";
 import { TVLayout } from "@/components/tv/TVLayout";
 import { TVChannelList } from "@/components/tv/TVChannelList";
@@ -173,7 +173,7 @@ export default function LiveTVPage() {
           
           {/* VOD Player - full width */}
           <div className="flex-1 min-h-0">
-            <VideoPlayer
+            <SmartPlayer
               channel={null}
               directStreamUrl={vodUrl}
               vodTitle={vodTitle || undefined}
@@ -234,7 +234,7 @@ export default function LiveTVPage() {
           {/* Player - Center */}
           <div className="flex-1 flex flex-col p-6">
             <div className="flex-1 relative">
-              <VideoPlayer
+              <SmartPlayer
                 channel={selectedChannel}
                 onPrevious={currentIndex > 0 ? handlePrevious : undefined}
                 onNext={currentIndex < channels.length - 1 ? handleNext : undefined}
@@ -285,7 +285,7 @@ export default function LiveTVPage() {
         <div className="flex flex-col h-[calc(100vh-3.5rem)] lg:h-screen bg-black">
           {/* Expanded Player */}
           <div className="flex-1 relative">
-            <VideoPlayer
+            <SmartPlayer
               channel={selectedChannel}
               onPrevious={currentIndex > 0 ? handlePrevious : undefined}
               onNext={currentIndex < channels.length - 1 ? handleNext : undefined}
@@ -339,7 +339,7 @@ export default function LiveTVPage() {
             {/* Mini player container - 16:9 aspect ratio, limited height */}
             <div className="w-48 sm:w-64 md:w-80 lg:w-96 shrink-0 relative group">
               <div className="relative aspect-video rounded-lg overflow-hidden bg-black shadow-lg">
-                <VideoPlayer
+                <SmartPlayer
                   channel={selectedChannel}
                   onPrevious={currentIndex > 0 ? handlePrevious : undefined}
                   onNext={currentIndex < channels.length - 1 ? handleNext : undefined}
