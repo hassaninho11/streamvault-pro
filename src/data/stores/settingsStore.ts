@@ -15,8 +15,9 @@ export interface AppSettings {
   theme: 'dark' | 'light' | 'system';
   language: 'auto' | 'en' | 'sv' | 'de';
   
-  // Playback
-  preferredEngine: 'auto' | 'shaka' | 'html5' | 'exo' | 'vlc';
+  // Playback - Engine Selection (TiviMate-style)
+  preferredEngine: 'auto' | 'exo' | 'vlc' | 'external';
+  autoPlayerSelection: boolean; // Enable smart auto-switching
   bufferMode: 'low-latency' | 'balanced' | 'stability';
   autoPlay: boolean;
   startOnLastChannel: boolean;
@@ -34,10 +35,11 @@ export interface AppSettings {
   subtitleBackground: boolean;
   
   // Advanced
-  mkvPlayerPreference: 'auto' | 'native' | 'vlc';
+  mkvPlayerPreference: 'auto' | 'exo' | 'vlc';
   customProxyUrl: string;
   showChannelNumbers: boolean;
   epgRefreshHours: number;
+  allowExternalPlayer: boolean; // Advanced: allow opening in external app
   
   // Parental Controls
   parentalEnabled: boolean;
@@ -57,6 +59,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   theme: 'dark',
   language: 'auto',
   preferredEngine: 'auto',
+  autoPlayerSelection: true,
   bufferMode: 'balanced',
   autoPlay: true,
   startOnLastChannel: true,
@@ -72,6 +75,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   customProxyUrl: '',
   showChannelNumbers: false,
   epgRefreshHours: 6,
+  allowExternalPlayer: false,
   parentalEnabled: false,
   playerLockEnabled: true,
   // Playlist update defaults
@@ -131,7 +135,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         language: (stored.language as AppSettings['language']) || DEFAULT_SETTINGS.language,
         autoPlay: stored.playerSettings?.autoplay ?? DEFAULT_SETTINGS.autoPlay,
         customProxyUrl: stored.playerSettings?.customProxyUrl || '',
-        mkvPlayerPreference: stored.playerSettings?.mkvPlayerPreference || DEFAULT_SETTINGS.mkvPlayerPreference,
+        mkvPlayerPreference: (stored.playerSettings?.mkvPlayerPreference as AppSettings['mkvPlayerPreference']) || DEFAULT_SETTINGS.mkvPlayerPreference,
+        preferredEngine: (stored.playerSettings?.preferredEngine as AppSettings['preferredEngine']) || DEFAULT_SETTINGS.preferredEngine,
+        autoPlayerSelection: stored.playerSettings?.autoPlayerSelection ?? DEFAULT_SETTINGS.autoPlayerSelection,
+        allowExternalPlayer: stored.playerSettings?.allowExternalPlayer ?? DEFAULT_SETTINGS.allowExternalPlayer,
       };
       
       set({
@@ -185,6 +192,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
                       draftSettings.bufferMode === 'low-latency' ? 10 : 30,
           customProxyUrl: draftSettings.customProxyUrl || undefined,
           mkvPlayerPreference: draftSettings.mkvPlayerPreference,
+          preferredEngine: draftSettings.preferredEngine,
+          autoPlayerSelection: draftSettings.autoPlayerSelection,
+          allowExternalPlayer: draftSettings.allowExternalPlayer,
         },
       };
       

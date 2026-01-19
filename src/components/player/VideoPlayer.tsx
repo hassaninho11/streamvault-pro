@@ -843,16 +843,16 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
       }
     };
     
-    const handleRememberChoice = async (choice: 'vlc' | 'native') => {
+    const handleRememberChoice = async (choice: 'vlc' | 'exo') => {
       const settings = await localStore.getSettings();
       await localStore.saveSettings({
         ...settings,
         playerSettings: {
           ...settings.playerSettings,
-          mkvPlayerPreference: choice,
+          mkvPlayerPreference: choice === 'exo' ? 'exo' : 'vlc',
         },
       });
-      toast.success(`Sparade inställning: ${choice === 'vlc' ? 'VLC-läge' : 'Standardspelare'}`);
+      toast.success(`Sparade inställning: ${choice === 'vlc' ? 'VLC-läge' : 'ExoPlayer'}`);
     };
     
     return (

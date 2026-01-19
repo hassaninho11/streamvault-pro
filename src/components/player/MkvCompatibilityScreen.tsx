@@ -46,7 +46,7 @@ interface MkvCompatibilityScreenProps {
   platform: Platform;
   onAction: (action: MkvAction) => void;
   onCancel: () => void;
-  onRememberChoice?: (choice: 'vlc' | 'native') => void;
+  onRememberChoice?: (choice: 'vlc' | 'exo') => void;
   isRetrying?: boolean;
   className?: string;
 }
@@ -65,7 +65,7 @@ export function MkvCompatibilityScreen({
   const [copied, setCopied] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [rememberChoice, setRememberChoice] = useState(false);
-  const [savedPreference, setSavedPreference] = useState<'auto' | 'native' | 'vlc'>('auto');
+  const [savedPreference, setSavedPreference] = useState<'auto' | 'exo' | 'vlc'>('auto');
   
   const formatUpper = format.toUpperCase();
   const isNativePlatform = platform === 'android' || platform === 'ios';
@@ -73,7 +73,7 @@ export function MkvCompatibilityScreen({
   // Load saved preference
   useEffect(() => {
     localStore.getSettings().then((settings) => {
-      const pref = (settings.playerSettings as { mkvPlayerPreference?: 'auto' | 'native' | 'vlc' })?.mkvPlayerPreference;
+      const pref = (settings.playerSettings as { mkvPlayerPreference?: 'auto' | 'exo' | 'vlc' })?.mkvPlayerPreference;
       if (pref) {
         setSavedPreference(pref);
       }
@@ -138,7 +138,7 @@ export function MkvCompatibilityScreen({
 
   const handleRetryNative = () => {
     if (rememberChoice && onRememberChoice) {
-      onRememberChoice('native');
+      onRememberChoice('exo');
     }
     onAction('retry_native');
   };

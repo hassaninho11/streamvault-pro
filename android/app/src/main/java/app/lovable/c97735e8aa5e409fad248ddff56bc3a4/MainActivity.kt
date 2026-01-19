@@ -26,5 +26,6 @@ class MainActivity : BridgeActivity() {
         // Register native playback plugins
         registerPlugin(NativePlaybackPlugin::class.java)
         registerPlugin(NativeCastPlugin::class.java)
+        registerPlugin(VlcPlaybackPlugin::class.java)
     }
 }
