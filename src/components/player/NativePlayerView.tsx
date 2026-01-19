@@ -31,6 +31,7 @@ import {
   isAndroidPlaybackAvailable,
 } from '@/player/AndroidPlaybackController';
 import { PlayerLock, PlayerLockOverlay } from './PlayerLock';
+import { EngineBadge } from './EngineBadge';
 import { useTVMode } from '@/contexts/TVModeContext';
 import { toast } from 'sonner';
 
@@ -270,11 +271,8 @@ export function NativePlayerView({
               )}>
                 {title}
               </h2>
-              {currentEngine && (
-                <p className="text-xs text-white/60">
-                  {currentEngine === 'exo-bridge' ? 'ExoPlayer' : 
-                   currentEngine === 'vlc-bridge' ? 'VLC' : currentEngine}
-                </p>
+              {currentEngine && currentEngine !== 'none' && (
+                <EngineBadge engine={currentEngine} size="sm" className="mt-1" />
               )}
             </div>
             
