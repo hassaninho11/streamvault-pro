@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useEffect } from "react";
 import { 
   Play, 
   Star, 
@@ -20,6 +20,8 @@ import { useChannelLoader } from "@/hooks/useChannelLoader";
 import { useChannelStore, useFilteredChannelIds, useFavoriteIds } from "@/data/stores/channelStore";
 import { useProviders } from "@/hooks/useProviders";
 import { useRecentlyWatched } from "@/hooks/useRecentlyWatched";
+import { useSettingsStore } from "@/data/stores/settingsStore";
+import { playlistUpdateService } from "@/services/PlaylistUpdateService";
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -31,6 +33,32 @@ export default function HomePage() {
   const index = useChannelStore((state) => state.index);
   const nowNextMap = useChannelStore((state) => state.nowNextMap);
   const parseProgress = useChannelStore((state) => state.parseProgress);
+  const { currentSettings } = useSettingsStore();
+
+  // Initialize playlist update scheduler on mount
+  useEffect(() => {
+    const intervalMinutes = currentSettings.playlistUpdateIntervalMinutes ?? 0;
+    const conditions = {
+      wifiOnly: currentSettings.playlistUpdateWifiOnly ?? true,
+      idleOnly: currentSettings.playlistUpdateIdleOnly ?? true,
+      pauseLowBattery: currentSettings.playlistUpdatePauseLowBattery ?? true,
+    };
+
+    // Check if update is due on startup/resume
+    playlistUpdateService.checkOnResume(intervalMinutes, conditions);
+
+    // Start scheduler
+    playlistUpdateService.startScheduler(intervalMinutes, conditions);
+
+    return () => {
+      playlistUpdateService.stopScheduler();
+    };
+  }, [
+    currentSettings.playlistUpdateIntervalMinutes,
+    currentSettings.playlistUpdateWifiOnly,
+    currentSettings.playlistUpdateIdleOnly,
+    currentSettings.playlistUpdatePauseLowBattery,
+  ]);
 
   // Get channel data from store
   const getChannel = (id: string) => index?.byId.get(id);
