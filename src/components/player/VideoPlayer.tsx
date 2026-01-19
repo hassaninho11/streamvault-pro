@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { hideStatusBar, showStatusBar } from "@/utils/statusBar";
 import { useNavigate } from "react-router-dom";
 import Hls from "hls.js";
 import {
@@ -635,9 +636,11 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
     if (!document.fullscreenElement) {
       await containerRef.current.requestFullscreen();
       setIsFullscreen(true);
+      hideStatusBar(); // Hide status bar on Android/iOS when entering fullscreen
     } else {
       await document.exitFullscreen();
       setIsFullscreen(false);
+      showStatusBar(); // Show status bar when exiting fullscreen
     }
   }, []);
 
@@ -707,6 +710,7 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
             e.preventDefault();
             document.exitFullscreen();
             setIsFullscreen(false);
+            showStatusBar(); // Restore status bar when exiting fullscreen via Escape
           }
           break;
       }
@@ -715,6 +719,23 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isFullscreen, catchupSource?.supportsTimeshift, seekBack, seekForward, togglePlay, toggleMute, toggleFullscreen]);
+
+  // Sync status bar with fullscreen state (handles native browser fullscreen exit)
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const isNowFullscreen = !!document.fullscreenElement;
+      setIsFullscreen(isNowFullscreen);
+      
+      if (isNowFullscreen) {
+        hideStatusBar();
+      } else {
+        showStatusBar();
+      }
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
   
   // Helper functions for timeshift
   const formatTime = (timestamp?: number): string => {
