@@ -345,29 +345,45 @@ class AdminService {
     if (!adminUser) throw new Error('Not authenticated');
 
     // Get current role for audit log
-    const { data: currentRole } = await supabase
+    const { data: currentRoles } = await supabase
       .from('user_roles')
       .select('*')
-      .eq('user_id', userId)
-      .single();
+      .eq('user_id', userId);
 
-    // Update or insert role
-    const { error: updateError } = await supabase
-      .from('user_roles')
-      .upsert({
-        user_id: userId,
-        role: newRole,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'user_id, role' });
+    const currentRole = currentRoles?.[0] || null;
 
-    if (updateError) throw updateError;
+    if (newRole === 'user') {
+      // Remove admin role - delete the role entry entirely
+      const { error: deleteError } = await supabase
+        .from('user_roles')
+        .delete()
+        .eq('user_id', userId)
+        .eq('role', 'admin');
+
+      if (deleteError) throw deleteError;
+    } else {
+      // Check if user already has this role
+      const existingRole = currentRoles?.find(r => r.role === newRole);
+      
+      if (!existingRole) {
+        // Insert new role
+        const { error: insertError } = await supabase
+          .from('user_roles')
+          .insert({
+            user_id: userId,
+            role: newRole,
+          });
+
+        if (insertError) throw insertError;
+      }
+    }
 
     // Create audit log
     await supabase.from('audit_logs').insert({
       admin_user_id: adminUser.id,
       action_type: 'change_role',
       target_user_id: userId,
-      before_json: currentRole || null,
+      before_json: currentRole,
       after_json: { role: newRole },
     });
   }

@@ -3,7 +3,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Bug, AlertTriangle, CheckCircle, Clock, XCircle, Filter } from 'lucide-react';
+import { Bug, CheckCircle, Clock, XCircle, Filter } from 'lucide-react';
 import { AdminLayout } from './AdminLayout';
 import { adminService, BugReport } from '@/services/AdminService';
 import { Button } from '@/components/ui/button';
