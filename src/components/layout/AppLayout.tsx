@@ -55,8 +55,8 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   return (
     <div className="flex h-screen bg-background overflow-hidden">
-      {/* Mobile Header */}
-      <header className="fixed top-0 left-0 right-0 z-50 lg:hidden bg-background/95 backdrop-blur-sm border-b border-border">
+      {/* Mobile Header - respects safe area on Android/iOS */}
+      <header className="fixed top-[var(--safe-area-inset-top)] left-0 right-0 z-50 lg:hidden bg-background/95 backdrop-blur-sm border-b border-border">
         <div className="flex items-center justify-between px-4 h-14">
           <Button
             variant="ghost"
@@ -85,10 +85,11 @@ export function AppLayout({ children }: AppLayoutProps) {
         />
       )}
 
-      {/* Sidebar */}
+      {/* Sidebar - respects safe area on mobile */}
       <aside
         className={cn(
           "fixed lg:relative z-50 lg:z-0 h-full w-64 bg-sidebar border-r border-sidebar-border transition-transform duration-300 lg:translate-x-0",
+          "pt-[var(--safe-area-inset-top)] lg:pt-0",
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
@@ -210,7 +211,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-y-auto pt-14 lg:pt-0">
+      <main className="flex-1 overflow-y-auto pt-[calc(var(--safe-area-inset-top)+3.5rem)] lg:pt-0">
         <div className="min-h-full">
           {children}
         </div>
