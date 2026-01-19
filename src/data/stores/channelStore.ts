@@ -1,6 +1,7 @@
 /**
  * Channel Store - Zustand store with O(1) indexed lookups
  * Supports 10k+ channels with fast search and filtering
+ * Respects category visibility settings for performance
  */
 
 import { create } from 'zustand';
@@ -8,6 +9,7 @@ import { subscribeWithSelector } from 'zustand/middleware';
 import { useShallow } from 'zustand/react/shallow';
 import type { CoreChannel, ChannelIndex, ChannelViewModel, CoreEpgProgram } from '../../core/types';
 import { searchChannels, getChannelsByGroup, getGroupsWithCounts } from '../../core/indexing/channelIndex';
+import { useCategoryVisibilityStore, createCategoryId } from './categoryVisibilityStore';
 
 interface ChannelState {
   // Raw data
@@ -104,9 +106,19 @@ let cachedFilteredIds: string[] = [];
 let cachedSearchQuery = '';
 let cachedSelectedGroup: string | null = null;
 let cachedIndex: ChannelIndex | null = null;
+let cachedVisibleGroups: Set<string> | null = null;
 
 /**
- * Get filtered channel IDs based on current search/group
+ * Check if a group is visible based on category visibility settings
+ */
+function isGroupVisible(groupName: string, visibilityStore: typeof useCategoryVisibilityStore): boolean {
+  const state = visibilityStore.getState();
+  const categoryId = createCategoryId('default', 'live', groupName);
+  return state.isVisible('live', categoryId);
+}
+
+/**
+ * Get filtered channel IDs based on current search/group and visibility settings
  * Returns IDs only - components lookup channel data as needed
  * Uses caching to prevent infinite re-renders
  */
@@ -115,11 +127,17 @@ export const useFilteredChannelIds = (): string[] => {
   const selectedGroup = useChannelStore((state) => state.selectedGroup);
   const index = useChannelStore((state) => state.index);
   
+  // Get visibility state
+  const visibleCategoryIds = useCategoryVisibilityStore((state) => state.visibleCategoryIds.live);
+  const hasConfigured = useCategoryVisibilityStore((state) => state.hasConfigured.live);
+  const includeHiddenInSearch = useCategoryVisibilityStore((state) => state.includeHiddenInSearch);
+  
   // Return cached result if inputs haven't changed
   if (
     index === cachedIndex &&
     searchQuery === cachedSearchQuery &&
-    selectedGroup === cachedSelectedGroup
+    selectedGroup === cachedSelectedGroup &&
+    visibleCategoryIds === cachedVisibleGroups
   ) {
     return cachedFilteredIds;
   }
@@ -128,21 +146,46 @@ export const useFilteredChannelIds = (): string[] => {
   cachedIndex = index;
   cachedSearchQuery = searchQuery;
   cachedSelectedGroup = selectedGroup;
+  cachedVisibleGroups = visibleCategoryIds;
   
   if (!index) {
     cachedFilteredIds = [];
     return cachedFilteredIds;
   }
   
+  // Helper to check if a channel's group is visible
+  const isChannelVisible = (channelId: string): boolean => {
+    if (!hasConfigured) return true; // Not configured = show all
+    const channel = index.byId.get(channelId);
+    if (!channel) return false;
+    const categoryId = createCategoryId('default', 'live', channel.group);
+    return visibleCategoryIds.has(categoryId);
+  };
+  
   // Search takes priority
   if (searchQuery.length > 0) {
-    cachedFilteredIds = searchChannels(searchQuery, index);
+    const searchResults = searchChannels(searchQuery, index);
+    // Filter by visibility unless includeHiddenInSearch is true
+    if (includeHiddenInSearch || !hasConfigured) {
+      cachedFilteredIds = searchResults;
+    } else {
+      cachedFilteredIds = searchResults.filter(isChannelVisible);
+    }
   } else if (selectedGroup) {
-    // Group filter
-    cachedFilteredIds = getChannelsByGroup(selectedGroup, index);
+    // Group filter - only show if the group is visible
+    const categoryId = createCategoryId('default', 'live', selectedGroup);
+    if (hasConfigured && !visibleCategoryIds.has(categoryId)) {
+      cachedFilteredIds = [];
+    } else {
+      cachedFilteredIds = getChannelsByGroup(selectedGroup, index);
+    }
   } else {
-    // All channels
-    cachedFilteredIds = index.allIds;
+    // All channels - filter by visibility
+    if (!hasConfigured) {
+      cachedFilteredIds = index.allIds;
+    } else {
+      cachedFilteredIds = index.allIds.filter(isChannelVisible);
+    }
   }
   
   return cachedFilteredIds;
@@ -189,9 +232,33 @@ export const useSelectedChannel = (): CoreChannel | null => {
 };
 
 /**
- * Get groups with counts
+ * Get groups with counts - respects visibility settings
  */
 export const useGroups = (): { name: string; count: number }[] => {
+  const index = useChannelStore((state) => state.index);
+  const visibleCategoryIds = useCategoryVisibilityStore((state) => state.visibleCategoryIds.live);
+  const hasConfigured = useCategoryVisibilityStore((state) => state.hasConfigured.live);
+  
+  if (!index) return [];
+  
+  const allGroups = getGroupsWithCounts(index);
+  
+  // If not configured, return all groups
+  if (!hasConfigured) {
+    return allGroups;
+  }
+  
+  // Filter to only visible groups
+  return allGroups.filter((g) => {
+    const categoryId = createCategoryId('default', 'live', g.name);
+    return visibleCategoryIds.has(categoryId);
+  });
+};
+
+/**
+ * Get ALL groups with counts (including hidden) - for settings UI
+ */
+export const useAllGroups = (): { name: string; count: number }[] => {
   return useChannelStore((state) => {
     if (!state.index) return [];
     return getGroupsWithCounts(state.index);
