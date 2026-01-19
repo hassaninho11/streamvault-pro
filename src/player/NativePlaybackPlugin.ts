@@ -225,8 +225,13 @@ export interface NativePlaybackPlugin {
 
 // ============= Register Plugin =============
 
-// This will be the actual bridge to native code
-// On web, it returns a mock that throws "not available"
+/**
+ * The NativePlayback Capacitor plugin.
+ * 
+ * On Android: Uses ExoPlayer via NativePlaybackPlugin.kt
+ * On iOS: Falls back to web implementation (AVPlayer integration pending)
+ * On Web: Uses NativePlaybackWeb stub
+ */
 const NativePlayback = registerPlugin<NativePlaybackPlugin>('NativePlayback', {
   web: () => import('./NativePlaybackWeb').then(m => new m.NativePlaybackWeb()),
 });
