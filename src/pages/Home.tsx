@@ -90,6 +90,7 @@ export default function HomePage() {
             <Zap className="w-10 h-10 text-primary-foreground" />
           </div>
           <h1 className="text-3xl font-bold mb-2 text-center">Welcome to {APP_CONFIG.name}</h1>
+          <p className="text-xs text-muted-foreground/50 mb-1 font-mono">Build: v2025.01.19-A</p>
           <p className="text-muted-foreground text-center mb-8 max-w-md">
             Add your first IPTV provider to start watching your favorite channels
           </p>
