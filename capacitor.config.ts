@@ -10,9 +10,9 @@ const config: CapacitorConfig = {
   },
   android: {
     allowMixedContent: true,
-    // Handle edge-to-edge display for Android 15+ (API 35)
-    // 'force' ensures margins are applied on all Android versions
-    adjustMarginsForEdgeToEdge: 'force',
+    // Edge-to-edge is disabled via MainActivity.kt using
+    // WindowCompat.setDecorFitsSystemWindows(window, true)
+    // Do NOT use adjustMarginsForEdgeToEdge as it doesn't work reliably
   },
   ios: {
     allowsLinkPreview: false,
