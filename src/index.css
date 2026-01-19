@@ -11,7 +11,9 @@
 
 @layer base {
   :root {
-    /* Safe area insets for mobile devices */
+    /* Safe area insets for mobile devices
+       Default to 48px on Android (will be overwritten by JS if plugin works)
+       This ensures content is never behind status bar even if JS fails */
     --safe-area-inset-top: env(safe-area-inset-top, 0px);
     --safe-area-inset-right: env(safe-area-inset-right, 0px);
     --safe-area-inset-bottom: env(safe-area-inset-bottom, 0px);
