@@ -183,24 +183,24 @@ export function AdminUsers() {
             />
           </div>
           
-          <Select value={roleFilter} onValueChange={setRoleFilter}>
+          <Select value={roleFilter || 'all'} onValueChange={(v) => setRoleFilter(v === 'all' ? '' : v)}>
             <SelectTrigger className="w-[150px]">
               <SelectValue placeholder="Roll" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Alla roller</SelectItem>
+              <SelectItem value="all">Alla roller</SelectItem>
               <SelectItem value="owner">Owner</SelectItem>
               <SelectItem value="admin">Admin</SelectItem>
               <SelectItem value="user">User</SelectItem>
             </SelectContent>
           </Select>
 
-          <Select value={premiumFilter} onValueChange={setPremiumFilter}>
+          <Select value={premiumFilter || 'all'} onValueChange={(v) => setPremiumFilter(v === 'all' ? '' : v)}>
             <SelectTrigger className="w-[150px]">
               <SelectValue placeholder="Premium" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Alla</SelectItem>
+              <SelectItem value="all">Alla</SelectItem>
               <SelectItem value="active">Premium</SelectItem>
               <SelectItem value="trialing">Trial</SelectItem>
               <SelectItem value="none">Gratis</SelectItem>
@@ -209,12 +209,12 @@ export function AdminUsers() {
             </SelectContent>
           </Select>
 
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <Select value={statusFilter || 'all'} onValueChange={(v) => setStatusFilter(v === 'all' ? '' : v)}>
             <SelectTrigger className="w-[150px]">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Alla</SelectItem>
+              <SelectItem value="all">Alla</SelectItem>
               <SelectItem value="active">Aktiv</SelectItem>
               <SelectItem value="disabled">Inaktiverad</SelectItem>
             </SelectContent>
