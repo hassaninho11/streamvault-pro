@@ -24,6 +24,7 @@ import { APP_CONFIG } from "@/config/app";
 import { useAuth } from "@/hooks/useAuth";
 import { ProfileSwitcher } from "@/components/profiles/ProfileSwitcher";
 import { useProfile } from "@/contexts/ProfileContext";
+import { CategoryFilter } from "./CategoryFilter";
 
 interface AppLayoutProps {
   children: ReactNode;
@@ -131,6 +132,11 @@ export function AppLayout({ children }: AppLayoutProps) {
                 <span>{item.label}</span>
               </NavLink>
             ))}
+
+            {/* Category Filter */}
+            <div className="pt-4 mt-4 border-t border-sidebar-border">
+              <CategoryFilter />
+            </div>
           </nav>
 
           {/* Bottom Section */}
