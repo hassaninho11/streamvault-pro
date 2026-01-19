@@ -31,7 +31,7 @@ import {
   isAndroidPlaybackAvailable,
 } from '@/player/AndroidPlaybackController';
 import { PlayerLock, PlayerLockOverlay } from './PlayerLock';
-import { EngineBadge } from './EngineBadge';
+import { EngineSwitcher } from './EngineSwitcher';
 import { useTVMode } from '@/contexts/TVModeContext';
 import { toast } from 'sonner';
 
@@ -180,6 +180,10 @@ export function NativePlayerView({
     controllerRef.current?.switchToVlc();
   }, []);
   
+  const handleSwitchToExo = useCallback(() => {
+    controllerRef.current?.switchToExoPlayer();
+  }, []);
+  
   // Format time
   const formatTime = (seconds: number): string => {
     const h = Math.floor(seconds / 3600);
@@ -271,12 +275,16 @@ export function NativePlayerView({
               )}>
                 {title}
               </h2>
-              {currentEngine && currentEngine !== 'none' && (
-                <EngineBadge engine={currentEngine} size="sm" className="mt-1" />
-              )}
             </div>
             
             <div className="flex items-center gap-2">
+              {/* Engine Switcher - Quick switch between ExoPlayer and VLC */}
+              <EngineSwitcher
+                currentEngine={currentEngine}
+                onSwitchToExo={handleSwitchToExo}
+                onSwitchToVlc={handleSwitchToVlc}
+              />
+              
               <PlayerLock 
                 isLocked={isLocked}
                 onLockToggle={setIsLocked}
