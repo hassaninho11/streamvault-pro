@@ -1,9 +1,16 @@
 /**
  * CastController - Manages Chromecast and AirPlay casting
+ * 
+ * Architecture:
+ * - CastController: Platform-agnostic interface
+ * - AndroidChromecastEngine: Native Chromecast via Google Cast SDK (web) or Capacitor plugin (native)
+ * - iOSAirPlayEngine: AirPlay support (stub for future iOS native implementation)
+ * - WebCastEngine: Browser-based casting via Cast SDK
  */
 
 import { MediaSource } from './types';
 import { toast } from 'sonner';
+import { performCastPreflight, getCastMimeType } from './CastPreflight';
 
 // ============= Cast State =============
 
@@ -16,6 +23,13 @@ export interface CastState {
   duration: number;
   isPlaying: boolean;
   error?: string;
+  // Extended state for UI
+  currentMedia?: {
+    url: string;
+    title: string;
+    posterUrl?: string;
+    isLive: boolean;
+  };
 }
 
 export interface CastDevice {
