@@ -52,8 +52,11 @@ dependencies {
     implementation("androidx.media3:media3-datasource:$media3Version")
     implementation("androidx.media3:media3-common:$media3Version")
     
-    // Chromecast support
+    // Chromecast support with Media3
     implementation("androidx.media3:media3-cast:$media3Version")
+    
+    // Google Cast Framework
+    implementation("com.google.android.gms:play-services-cast-framework:22.0.0")
     
     // For smooth streaming
     implementation("androidx.media3:media3-exoplayer-smoothstreaming:$media3Version")

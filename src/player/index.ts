@@ -108,3 +108,15 @@ export {
   type StreamInfo,
   type LoadOptions,
 } from './NativePlaybackPlugin';
+
+// Native Cast Plugin (Android Chromecast)
+export {
+  NativeCast,
+  isNativeCastAvailable,
+  getCastPlatform,
+  type CastState as NativeCastState,
+  type CastStateInfo,
+  type CastSessionEvent,
+  type CastPlaybackState,
+  type LoadMediaOptions,
+} from './NativeCastPlugin';

@@ -23,7 +23,8 @@ class MainActivity : BridgeActivity() {
         // and does not render behind the status bar
         WindowCompat.setDecorFitsSystemWindows(window, true)
         
-        // Register NativePlayback plugin
+        // Register native playback plugins
         registerPlugin(NativePlaybackPlugin::class.java)
+        registerPlugin(NativeCastPlugin::class.java)
     }
 }
