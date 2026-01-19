@@ -30,6 +30,7 @@ export default function HomePage() {
   const favoriteIds = useFavoriteIds();
   const index = useChannelStore((state) => state.index);
   const nowNextMap = useChannelStore((state) => state.nowNextMap);
+  const parseProgress = useChannelStore((state) => state.parseProgress);
 
   // Get channel data from store
   const getChannel = (id: string) => index?.byId.get(id);
@@ -91,8 +92,32 @@ export default function HomePage() {
     return (
       <AppLayout>
         <div className="flex flex-col items-center justify-center min-h-[80vh] px-4">
-          <Loader2 className="w-12 h-12 text-primary animate-spin mb-4" />
-          <p className="text-muted-foreground">Loading channels...</p>
+          <div className="w-full max-w-xs space-y-4">
+            <div className="flex flex-col items-center">
+              <Loader2 className="w-12 h-12 text-primary animate-spin mb-4" />
+              <h3 className="font-semibold text-lg mb-1">Laddar kanaler...</h3>
+              <p className="text-sm text-muted-foreground text-center">
+                {parseProgress > 0 
+                  ? `${Math.round(parseProgress)}% klart`
+                  : 'Ansluter till leverantörer...'}
+              </p>
+            </div>
+            
+            {/* Progress bar */}
+            {parseProgress > 0 && (
+              <div className="space-y-2">
+                <div className="h-2 bg-muted rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-primary transition-all duration-300 rounded-full"
+                    style={{ width: `${parseProgress}%` }}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground text-center">
+                  {channelCount > 0 && `${channelCount.toLocaleString()} kanaler hittade`}
+                </p>
+              </div>
+            )}
+          </div>
         </div>
       </AppLayout>
     );
