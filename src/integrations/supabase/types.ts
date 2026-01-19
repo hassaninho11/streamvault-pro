@@ -14,6 +14,201 @@ export type Database = {
   }
   public: {
     Tables: {
+      admin_user_metadata: {
+        Row: {
+          admin_notes: string | null
+          created_at: string
+          device_count: number | null
+          id: string
+          last_seen_at: string | null
+          provider_count: number | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          admin_notes?: string | null
+          created_at?: string
+          device_count?: number | null
+          id?: string
+          last_seen_at?: string | null
+          provider_count?: number | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          admin_notes?: string | null
+          created_at?: string
+          device_count?: number | null
+          id?: string
+          last_seen_at?: string | null
+          provider_count?: number | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      app_events: {
+        Row: {
+          app_version: string | null
+          created_at: string
+          event_type: string
+          id: string
+          meta_masked: Json | null
+          platform: string | null
+          user_id: string | null
+        }
+        Insert: {
+          app_version?: string | null
+          created_at?: string
+          event_type: string
+          id?: string
+          meta_masked?: Json | null
+          platform?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          app_version?: string | null
+          created_at?: string
+          event_type?: string
+          id?: string
+          meta_masked?: Json | null
+          platform?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      audit_logs: {
+        Row: {
+          action_type: string
+          admin_user_id: string
+          after_json: Json | null
+          before_json: Json | null
+          created_at: string
+          id: string
+          ip_address: string | null
+          target_user_id: string | null
+          user_agent: string | null
+        }
+        Insert: {
+          action_type: string
+          admin_user_id: string
+          after_json?: Json | null
+          before_json?: Json | null
+          created_at?: string
+          id?: string
+          ip_address?: string | null
+          target_user_id?: string | null
+          user_agent?: string | null
+        }
+        Update: {
+          action_type?: string
+          admin_user_id?: string
+          after_json?: Json | null
+          before_json?: Json | null
+          created_at?: string
+          id?: string
+          ip_address?: string | null
+          target_user_id?: string | null
+          user_agent?: string | null
+        }
+        Relationships: []
+      }
+      bug_reports: {
+        Row: {
+          app_version: string | null
+          assigned_to: string | null
+          attachments: Json | null
+          created_at: string
+          description: string | null
+          diagnostics_masked: Json | null
+          id: string
+          platform: string | null
+          severity: string
+          status: string
+          tags: string[] | null
+          title: string
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          app_version?: string | null
+          assigned_to?: string | null
+          attachments?: Json | null
+          created_at?: string
+          description?: string | null
+          diagnostics_masked?: Json | null
+          id?: string
+          platform?: string | null
+          severity?: string
+          status?: string
+          tags?: string[] | null
+          title: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          app_version?: string | null
+          assigned_to?: string | null
+          attachments?: Json | null
+          created_at?: string
+          description?: string | null
+          diagnostics_masked?: Json | null
+          id?: string
+          platform?: string | null
+          severity?: string
+          status?: string
+          tags?: string[] | null
+          title?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      entitlements: {
+        Row: {
+          created_at: string
+          grant_reason: string | null
+          granted_by: string | null
+          id: string
+          premium_source: string
+          premium_status: string
+          premium_until: string | null
+          trial_end_at: string | null
+          trial_start_at: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          grant_reason?: string | null
+          granted_by?: string | null
+          id?: string
+          premium_source?: string
+          premium_status?: string
+          premium_until?: string | null
+          trial_end_at?: string | null
+          trial_start_at?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          grant_reason?: string | null
+          granted_by?: string | null
+          id?: string
+          premium_source?: string
+          premium_status?: string
+          premium_until?: string | null
+          trial_end_at?: string | null
+          trial_start_at?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       favorites: {
         Row: {
           channel_id: string
@@ -45,6 +240,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      feature_flags: {
+        Row: {
+          created_at: string
+          description: string | null
+          enabled: boolean
+          flag_key: string
+          id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          enabled?: boolean
+          flag_key: string
+          id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          enabled?: boolean
+          flag_key?: string
+          id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
       }
       profiles: {
         Row: {
@@ -127,6 +352,48 @@ export type Database = {
         }
         Relationships: []
       }
+      purchases: {
+        Row: {
+          created_at: string
+          currency: string | null
+          id: string
+          platform: string
+          price: number | null
+          product_id: string
+          purchased_at: string
+          receipt_data: string | null
+          status: string
+          transaction_id: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          currency?: string | null
+          id?: string
+          platform: string
+          price?: number | null
+          product_id: string
+          purchased_at?: string
+          receipt_data?: string | null
+          status?: string
+          transaction_id?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          currency?: string | null
+          id?: string
+          platform?: string
+          price?: number | null
+          product_id?: string
+          purchased_at?: string
+          receipt_data?: string | null
+          status?: string
+          transaction_id?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       recently_watched: {
         Row: {
           channel_id: string
@@ -204,15 +471,46 @@ export type Database = {
         }
         Relationships: []
       }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
+      is_admin_or_owner: { Args: { _user_id: string }; Returns: boolean }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "owner" | "admin" | "user"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -339,6 +637,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["owner", "admin", "user"],
+    },
   },
 } as const
