@@ -3,7 +3,7 @@
  * Allows users to toggle which categories are visible in Live TV, Movies, and Series
  */
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Search, Tv, Film, MonitorPlay, Check, X, Eye, EyeOff, AlertTriangle } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -38,39 +38,40 @@ interface SectionData {
 export function CategoryVisibilitySettings() {
   const [activeTab, setActiveTab] = useState<CategorySection>('live');
   const [searchQuery, setSearchQuery] = useState('');
+  const hasStartedEditing = useRef(false);
   
-  // Store
-  const {
-    draftVisibility,
-    isDirty,
-    startEditing,
-    updateDraft,
-    setDraftAll,
-    setDraftNone,
-    saveDraft,
-    cancelDraft,
-    getDraftVisibility,
-    includeHiddenInSearch,
-    setIncludeHiddenInSearch,
-    hasConfigured,
-  } = useCategoryVisibilityStore();
+  // Store - use individual selectors to avoid unnecessary re-renders
+  const draftVisibility = useCategoryVisibilityStore((s) => s.draftVisibility);
+  const isDirty = useCategoryVisibilityStore((s) => s.isDirty);
+  const includeHiddenInSearch = useCategoryVisibilityStore((s) => s.includeHiddenInSearch);
+  
+  // Get actions once - these are stable
+  const storeActions = useCategoryVisibilityStore((s) => ({
+    startEditing: s.startEditing,
+    updateDraft: s.updateDraft,
+    setDraftAll: s.setDraftAll,
+    setDraftNone: s.setDraftNone,
+    saveDraft: s.saveDraft,
+    cancelDraft: s.cancelDraft,
+    setIncludeHiddenInSearch: s.setIncludeHiddenInSearch,
+  }));
   
   // Get ALL categories from stores (including hidden)
   const liveGroups = useAllGroups();
   const movies = useVodStore((s) => s.movies);
   const series = useVodStore((s) => s.series);
   
-  // Start editing mode on mount (only once)
+  // Start editing mode on mount (only once, using ref to prevent double calls)
   useEffect(() => {
-    startEditing();
+    if (!hasStartedEditing.current) {
+      hasStartedEditing.current = true;
+      storeActions.startEditing();
+    }
     return () => {
-      cancelDraft();
+      storeActions.cancelDraft();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Empty deps - these are stable Zustand actions
-  
-  // Guard: don't render until draft is initialized
-  const isInitialized = draftVisibility !== null;
+  }, []);
   
   // Build category lists for each section
   const sectionData = useMemo((): Record<CategorySection, SectionData> => {
@@ -137,7 +138,7 @@ export function CategoryVisibilitySettings() {
     return data.categories.filter((c) => c.name.toLowerCase().includes(query));
   }, [sectionData, activeTab, searchQuery]);
   
-  // Calculate visible counts
+  // Calculate visible counts - use draftVisibility directly
   const visibleCount = useMemo(() => {
     if (!draftVisibility) return 0;
     return draftVisibility[activeTab].size;
@@ -147,28 +148,34 @@ export function CategoryVisibilitySettings() {
     return sectionData[activeTab].categories.map((c) => c.id);
   }, [sectionData, activeTab]);
   
-  const handleToggle = (categoryId: string, visible: boolean) => {
-    updateDraft(activeTab, categoryId, visible);
-  };
+  // Check visibility using the draft directly (not a store method)
+  const isVisibleInDraft = useCallback((section: CategorySection, categoryId: string): boolean => {
+    if (!draftVisibility) return true;
+    return draftVisibility[section].has(categoryId);
+  }, [draftVisibility]);
   
-  const handleSelectAll = () => {
-    setDraftAll(activeTab, allCategoryIds);
-  };
+  const handleToggle = useCallback((categoryId: string, visible: boolean) => {
+    storeActions.updateDraft(activeTab, categoryId, visible);
+  }, [storeActions, activeTab]);
   
-  const handleDeselectAll = () => {
-    setDraftNone(activeTab);
-  };
+  const handleSelectAll = useCallback(() => {
+    storeActions.setDraftAll(activeTab, allCategoryIds);
+  }, [storeActions, activeTab, allCategoryIds]);
   
-  const handleSave = () => {
-    saveDraft();
+  const handleDeselectAll = useCallback(() => {
+    storeActions.setDraftNone(activeTab);
+  }, [storeActions, activeTab]);
+  
+  const handleSave = useCallback(() => {
+    storeActions.saveDraft();
     // Re-start editing mode for continued editing
-    startEditing();
-  };
+    storeActions.startEditing();
+  }, [storeActions]);
   
-  const handleCancel = () => {
-    cancelDraft();
-    startEditing();
-  };
+  const handleCancel = useCallback(() => {
+    storeActions.cancelDraft();
+    storeActions.startEditing();
+  }, [storeActions]);
   
   const getSectionIcon = (section: CategorySection) => {
     switch (section) {
@@ -188,9 +195,9 @@ export function CategoryVisibilitySettings() {
   
   // Show warning if no categories are visible
   const showNoVisibleWarning = visibleCount === 0 && draftVisibility;
-
-  // Show loading state while draft is being initialized
-  if (!isInitialized) {
+  
+  // Guard: don't render until draft is initialized
+  if (!draftVisibility) {
     return (
       <div className="space-y-6">
         <Card>
@@ -303,7 +310,7 @@ export function CategoryVisibilitySettings() {
                       </div>
                     ) : (
                       filteredCategories.map((category) => {
-                        const isVisible = getDraftVisibility(section, category.id);
+                        const isVisible = isVisibleInDraft(section, category.id);
                         return (
                           <div
                             key={category.id}
@@ -357,7 +364,7 @@ export function CategoryVisibilitySettings() {
             </div>
             <Switch
               checked={includeHiddenInSearch}
-              onCheckedChange={setIncludeHiddenInSearch}
+              onCheckedChange={storeActions.setIncludeHiddenInSearch}
             />
           </div>
           
