@@ -43,11 +43,13 @@ import { UnsavedChangesDialog } from "@/components/settings/UnsavedChangesDialog
 import { CategoryVisibilitySettings } from "@/components/settings/CategoryVisibilitySettings";
 import { PlaylistUpdateSettings } from "@/components/settings/PlaylistUpdateSettings";
 import { StartupMetrics } from "@/components/settings/StartupMetrics";
+import { BugReportForm } from "@/components/settings/BugReportForm";
 import { APP_CONFIG } from "@/config/app";
 import { cn } from "@/lib/utils";
 import { useSettingsStore, PROTECTED_SETTINGS } from "@/data/stores/settingsStore";
 import { useAuth } from "@/hooks/useAuth";
 import { useLanguage } from "@/contexts/LanguageContext";
+import { useAdminAuth } from "@/hooks/useAdminAuth";
 import { syncEngine, SyncStatus } from "@/data/stores/syncEngine";
 
 interface SettingsSection {
@@ -71,6 +73,7 @@ export default function SettingsPage() {
   const navigate = useNavigate();
   const { t } = useLanguage();
   const { user, isGuest, signOut } = useAuth();
+  const { isAdmin, isOwner } = useAdminAuth();
   const { 
     draftSettings, 
     isDirty, 
@@ -282,6 +285,34 @@ export default function SettingsPage() {
                     </Button>
                   </CardContent>
                 </Card>
+
+                {/* Admin Panel Link - only visible for admin/owner */}
+                {isAdmin && (
+                  <Card variant="glass" className="border-primary/50">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Shield className="w-5 h-5 text-primary" />
+                        Admin Panel
+                      </CardTitle>
+                      <CardDescription>
+                        {isOwner ? 'Du är ägare - full åtkomst' : 'Du är admin'}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <Button 
+                        variant="default" 
+                        className="w-full justify-between"
+                        onClick={() => navigate('/admin')}
+                      >
+                        <span className="flex items-center gap-2">
+                          <Shield className="w-4 h-4" />
+                          Öppna Admin Panel
+                        </span>
+                        <ChevronRight className="w-4 h-4" />
+                      </Button>
+                    </CardContent>
+                  </Card>
+                )}
 
                 <Card variant="glass">
                   <CardHeader>
@@ -760,9 +791,13 @@ export default function SettingsPage() {
                     </p>
                   </div>
                   <Separator />
-                  <div className="flex gap-2">
-                    <Button variant="outline" size="sm" onClick={() => navigate('/privacy')}>Privacy Policy</Button>
-                    <Button variant="outline" size="sm" onClick={() => navigate('/terms')}>Terms of Service</Button>
+                  <div className="flex flex-col gap-3">
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" onClick={() => navigate('/privacy')}>Privacy Policy</Button>
+                      <Button variant="outline" size="sm" onClick={() => navigate('/terms')}>Terms of Service</Button>
+                    </div>
+                    <Separator />
+                    <BugReportForm />
                   </div>
                 </CardContent>
               </Card>

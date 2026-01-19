@@ -31,6 +31,15 @@ import Privacy from "./pages/Privacy";
 import Terms from "./pages/Terms";
 import NotFound from "./pages/NotFound";
 
+// Admin pages
+import { AdminGuard } from "@/components/admin/AdminGuard";
+import AdminDashboard from "./pages/admin/AdminDashboard";
+import AdminUsers from "./pages/admin/AdminUsers";
+import AdminPremium from "./pages/admin/AdminPremium";
+import AdminBugs from "./pages/admin/AdminBugs";
+import AdminAudit from "./pages/admin/AdminAudit";
+import AdminSettings from "./pages/admin/AdminSettings";
+
 // Initialize settings on app load
 function SettingsInitializer() {
   const { load, initialized } = useSettingsStore();
@@ -68,6 +77,15 @@ const AppRoutes = () => {
       <Route path="/testlab" element={<PlaybackTestLab />} />
       <Route path="/privacy" element={<Privacy />} />
       <Route path="/terms" element={<Terms />} />
+      
+      {/* Admin routes - protected by AdminGuard */}
+      <Route path="/admin" element={<AdminGuard><AdminDashboard /></AdminGuard>} />
+      <Route path="/admin/users" element={<AdminGuard><AdminUsers /></AdminGuard>} />
+      <Route path="/admin/premium" element={<AdminGuard><AdminPremium /></AdminGuard>} />
+      <Route path="/admin/bugs" element={<AdminGuard><AdminBugs /></AdminGuard>} />
+      <Route path="/admin/audit" element={<AdminGuard><AdminAudit /></AdminGuard>} />
+      <Route path="/admin/settings" element={<AdminGuard requireOwner><AdminSettings /></AdminGuard>} />
+      
       <Route path="*" element={<NotFound />} />
     </Routes>
   );
