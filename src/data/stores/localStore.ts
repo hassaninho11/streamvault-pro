@@ -65,7 +65,7 @@ export interface LocalEntitlement {
   trialStartedAt?: number;
   trialEndsAt?: number;
   plan?: string;
-  source: 'local' | 'stripe' | 'iap';
+  source: 'local' | 'stripe' | 'iap' | 'server';
   purchaseToken?: string;
   expiresAt?: number;
   updatedAt: number;

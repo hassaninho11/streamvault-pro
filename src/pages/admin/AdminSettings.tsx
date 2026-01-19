@@ -3,9 +3,10 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Settings, Flag, Download, Shield } from 'lucide-react';
+import { Settings, Flag, Download, Shield, Loader2 } from 'lucide-react';
 import { AdminLayout } from './AdminLayout';
 import { adminService } from '@/services/AdminService';
+import { adminExportService } from '@/services/AdminExportService';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -23,6 +24,7 @@ export function AdminSettings() {
   const [flags, setFlags] = useState<FeatureFlag[]>([]);
   const [loading, setLoading] = useState(true);
   const [toggling, setToggling] = useState<string | null>(null);
+  const [exporting, setExporting] = useState<string | null>(null);
 
   useEffect(() => {
     const loadFlags = async () => {
@@ -57,8 +59,24 @@ export function AdminSettings() {
     }
   };
 
-  const handleExportUsers = async () => {
-    toast.info('Export-funktionen kommer snart');
+  const handleExport = async (type: 'users' | 'bugs' | 'audit') => {
+    setExporting(type);
+    try {
+      if (type === 'users') {
+        await adminExportService.exportUsers();
+        toast.success('Användare exporterade');
+      } else if (type === 'bugs') {
+        await adminExportService.exportBugReports();
+        toast.success('Bugrapporter exporterade');
+      } else if (type === 'audit') {
+        await adminExportService.exportAuditLogs();
+        toast.success('Audit logs exporterade');
+      }
+    } catch (err) {
+      toast.error('Export misslyckades');
+    } finally {
+      setExporting(null);
+    }
   };
 
   return (
@@ -138,17 +156,17 @@ export function AdminSettings() {
             </CardHeader>
             <CardContent>
               <div className="flex flex-wrap gap-4">
-                <Button variant="outline" onClick={handleExportUsers}>
-                  <Download className="w-4 h-4 mr-2" />
+                <Button variant="outline" onClick={() => handleExport('users')} disabled={exporting === 'users'}>
+                  {exporting === 'users' ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
                   Exportera användare
                 </Button>
-                <Button variant="outline" disabled>
-                  <Download className="w-4 h-4 mr-2" />
-                  Exportera köp
-                </Button>
-                <Button variant="outline" disabled>
-                  <Download className="w-4 h-4 mr-2" />
+                <Button variant="outline" onClick={() => handleExport('bugs')} disabled={exporting === 'bugs'}>
+                  {exporting === 'bugs' ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
                   Exportera bugrapporter
+                </Button>
+                <Button variant="outline" onClick={() => handleExport('audit')} disabled={exporting === 'audit'}>
+                  {exporting === 'audit' ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
+                  Exportera audit logs
                 </Button>
               </div>
             </CardContent>

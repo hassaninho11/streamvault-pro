@@ -4,9 +4,13 @@
  * 
  * IMPORTANT: Premium/Trial works WITHOUT login
  * Login is ONLY for syncing playlists between devices
+ * 
+ * For logged-in users, also checks server-side entitlements
+ * (e.g., manual grants from admin panel)
  */
 
 import { localStore, LocalEntitlement } from '@/data/stores/localStore';
+import { supabase } from '@/integrations/supabase/client';
 import { APP_CONFIG } from '@/config/app';
 
 // ============= Types =============
@@ -18,7 +22,7 @@ export interface EntitlementStatus {
   trialEndsAt?: Date;
   trialDaysRemaining?: number;
   plan?: string;
-  source: 'local' | 'stripe' | 'iap' | 'none';
+  source: 'local' | 'stripe' | 'iap' | 'none' | 'server';
   expiresAt?: Date;
   isExpired: boolean;
   isTrialExpired: boolean;
@@ -144,7 +148,15 @@ class EntitlementsService {
   // ============= Status =============
 
   async getStatus(): Promise<EntitlementStatus> {
-    // Check local entitlement first
+    // First, check server-side entitlements for logged-in users
+    const serverStatus = await this.checkServerEntitlements();
+    if (serverStatus && serverStatus.isPremium) {
+      // Sync to local storage for offline access
+      await this.syncToLocal(serverStatus);
+      return serverStatus;
+    }
+
+    // Check local entitlement
     let localEntitlement = await localStore.getEntitlement();
     
     // Auto-start trial on first launch
@@ -172,6 +184,82 @@ class EntitlementsService {
 
     // Return current status (may be expired trial)
     return status;
+  }
+
+  /**
+   * Check server-side entitlements (for admin grants, etc.)
+   */
+  private async checkServerEntitlements(): Promise<EntitlementStatus | null> {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return null;
+
+      const { data: entitlement, error } = await supabase
+        .from('entitlements')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
+
+      if (error || !entitlement) return null;
+
+      // Check if premium is active
+      if (entitlement.premium_status === 'active') {
+        const expiresAt = entitlement.premium_until ? new Date(entitlement.premium_until) : null;
+        const isExpired = expiresAt ? expiresAt < new Date() : false;
+
+        if (!isExpired) {
+          return {
+            isPremium: true,
+            isTrial: false,
+            source: entitlement.premium_source === 'manual' ? 'none' : 'stripe',
+            plan: entitlement.premium_source === 'manual' ? 'admin_grant' : 'premium',
+            expiresAt: expiresAt || undefined,
+            isExpired: false,
+            isTrialExpired: false,
+          };
+        }
+      }
+
+      // Check if trial is active
+      if (entitlement.premium_status === 'trialing') {
+        const trialEndsAt = entitlement.trial_end_at ? new Date(entitlement.trial_end_at) : null;
+        const isTrialExpired = trialEndsAt ? trialEndsAt < new Date() : false;
+        const trialStartedAt = entitlement.trial_start_at ? new Date(entitlement.trial_start_at) : undefined;
+
+        return {
+          isPremium: false,
+          isTrial: true,
+          trialStartedAt,
+          trialEndsAt: trialEndsAt || undefined,
+          trialDaysRemaining: trialEndsAt ? Math.max(0, Math.ceil((trialEndsAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000))) : 0,
+          source: 'none',
+          isExpired: false,
+          isTrialExpired,
+        };
+      }
+
+      return null;
+    } catch (err) {
+      console.warn('[EntitlementsService] Failed to check server entitlements:', err);
+      return null;
+    }
+  }
+
+  /**
+   * Sync server entitlement to local storage for offline access
+   */
+  private async syncToLocal(status: EntitlementStatus): Promise<void> {
+    const deviceId = await localStore.getDeviceId();
+    await localStore.saveEntitlement({
+      deviceId,
+      isPremium: status.isPremium,
+      isTrial: status.isTrial,
+      trialStartedAt: status.trialStartedAt?.getTime(),
+      trialEndsAt: status.trialEndsAt?.getTime(),
+      expiresAt: status.expiresAt?.getTime(),
+      plan: status.plan,
+      source: 'server',
+    });
   }
 
   async refresh(): Promise<EntitlementStatus> {
