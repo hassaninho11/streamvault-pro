@@ -4,10 +4,9 @@ const config: CapacitorConfig = {
   appId: 'app.lovable.c97735e8aa5e409fad248ddff56bc3a4',
   appName: 'StreamVault',
   webDir: 'dist',
-  // Local build mode - no remote server URL
-  // Run: npm run build && npx cap sync android && npx cap run android
   server: {
-    cleartext: true, // Allow HTTP for IPTV streams
+    url: 'https://c97735e8-aa5e-409f-ad24-8ddff56bc3a4.lovableproject.com?forceHideBadge=true',
+    cleartext: true,
   },
   android: {
     allowMixedContent: true,
