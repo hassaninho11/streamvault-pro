@@ -2,12 +2,14 @@
 <resources>
     <!-- Base application theme -->
     <style name="AppTheme" parent="Theme.AppCompat.DayNight.DarkActionBar">
-        <item name="colorPrimary">#7C3AED</item>
-        <item name="colorPrimaryDark">#5B21B6</item>
-        <item name="colorAccent">#7C3AED</item>
-        <item name="android:windowBackground">#0F0F23</item>
-        <item name="android:navigationBarColor">#0F0F23</item>
-        <item name="android:statusBarColor">#0F0F23</item>
+        <item name="colorPrimary">#0EBED6</item>
+        <item name="colorPrimaryDark">#0c1018</item>
+        <item name="colorAccent">#0EBED6</item>
+        <item name="android:windowBackground">#0c1018</item>
+        <item name="android:navigationBarColor">#0c1018</item>
+        <item name="android:statusBarColor">#0c1018</item>
+        <!-- Ensure content does not draw under system bars -->
+        <item name="android:fitsSystemWindows">true</item>
     </style>
 
     <style name="AppTheme.NoActionBar" parent="AppTheme">
@@ -16,6 +18,6 @@
     </style>
 
     <style name="AppTheme.NoActionBarLaunch" parent="AppTheme.NoActionBar">
-        <item name="android:background">#0F0F23</item>
+        <item name="android:background">#0c1018</item>
     </style>
 </resources>
