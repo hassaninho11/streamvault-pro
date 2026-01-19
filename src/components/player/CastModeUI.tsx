@@ -75,6 +75,7 @@ interface CastControlsProps {
   onStopCast: () => void;
   title?: string;
   posterUrl?: string;
+  isLive?: boolean;
   className?: string;
 }
 
@@ -91,6 +92,7 @@ export function CastControls({
   onStopCast,
   title,
   posterUrl,
+  isLive = false,
   className,
 }: CastControlsProps) {
   const [isMuted, setIsMuted] = useState(false);
@@ -144,22 +146,31 @@ export function CastControls({
         )}
         <div className="flex-1">
           <h3 className="text-lg font-semibold">{title || 'Now Playing'}</h3>
-          <p className="text-sm text-muted-foreground mt-1">
-            {formatTime(currentTime)} / {formatTime(duration)}
-          </p>
+          {isLive ? (
+            <div className="flex items-center gap-2 mt-1">
+              <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+              <p className="text-sm text-muted-foreground">LIVE</p>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground mt-1">
+              {formatTime(currentTime)} / {formatTime(duration)}
+            </p>
+          )}
         </div>
       </div>
 
-      {/* Progress bar */}
-      <div className="mb-6">
-        <Slider
-          value={[currentTime]}
-          onValueChange={([val]) => onSeek(val)}
-          max={duration || 100}
-          step={1}
-          className="w-full"
-        />
-      </div>
+      {/* Progress bar - only for VOD */}
+      {!isLive && (
+        <div className="mb-6">
+          <Slider
+            value={[currentTime]}
+            onValueChange={([val]) => onSeek(val)}
+            max={duration || 100}
+            step={1}
+            className="w-full"
+          />
+        </div>
+      )}
 
       {/* Controls */}
       <div className="flex items-center justify-center gap-4">

@@ -23,6 +23,7 @@ import {
   Settings,
   Copy,
   Shield,
+  Cast,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -34,6 +35,7 @@ import { useMultiScreen } from "@/contexts/MultiScreenContext";
 import { QualitySelector, QualityLevel } from "./QualitySelector";
 import { PlaybackBlockedScreen } from "./PlaybackBlockedScreen";
 import { MkvCompatibilityScreen, MkvAction } from "./MkvCompatibilityScreen";
+import { CastModeBanner, CastControls, CastDevicePicker, CastButton } from "./CastModeUI";
 import { localStore } from "@/data/stores/localStore";
 import { toast } from "sonner";
 import {
@@ -51,7 +53,9 @@ import {
   isUnsupportedContainer,
   detectContainerFromUrl,
 } from "@/player/MediaPreflight";
-import { getCastController } from "@/player/CastController";
+import { getCastController, CastState, CastDevice } from "@/player/CastController";
+import { performCastPreflight, canCastUrl } from "@/player/CastPreflight";
+import { useCastIntegration } from "@/hooks/useCastIntegration";
 
 interface VideoPlayerProps {
   channel: Channel | null;
@@ -101,6 +105,44 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
   // Multi-screen hook
   const { isMultiScreenMode, enterMultiScreen } = useMultiScreen();
   
+  // Cast integration
+  const castResumePositionRef = useRef<number>(0);
+  const {
+    castState,
+    devices: castDevices,
+    isCasting,
+    isChromecastAvailable,
+    isAirPlayAvailable,
+    showDevicePicker,
+    openDevicePicker,
+    closeDevicePicker,
+    startCast,
+    stopCast,
+    selectDevice: selectCastDevice,
+    play: castPlay,
+    pause: castPause,
+    togglePlay: castTogglePlay,
+    seek: castSeek,
+    setVolume: castSetVolume,
+    toggleMute: castToggleMute,
+  } = useCastIntegration({
+    onCastStart: () => {
+      // Stop local playback when cast starts
+      if (videoRef.current) {
+        castResumePositionRef.current = videoRef.current.currentTime;
+        videoRef.current.pause();
+        destroyHls();
+      }
+    },
+    onCastEnd: (resumePosition) => {
+      // Resume local playback when cast ends
+      castResumePositionRef.current = resumePosition;
+      // Trigger re-render to restart playback
+      setError(null);
+      setIsBuffering(true);
+    },
+  });
+  
   // Timeshift/Catch-up hook
   const {
     timeshiftState,
@@ -113,7 +155,7 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
     catchupSource,
   } = useCatchup({ 
     channelId: channel?.id || '', 
-    videoElement: videoRef.current 
+    videoElement: videoRef.current
   });
   
   // Handle quality level selection
@@ -828,6 +870,48 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
     );
   }
 
+  // If casting, show cast mode UI instead of video
+  if (isCasting) {
+    const streamUrl = directStreamUrl || channel?.streamUrl || '';
+    return (
+      <div className={cn("bg-player-bg rounded-xl aspect-video", className)}>
+        <CastControls
+          castState={castState}
+          isPlaying={castState.isPlaying}
+          currentTime={castState.currentTime}
+          duration={castState.duration}
+          volume={volume}
+          onPlay={castPlay}
+          onPause={castPause}
+          onSeek={castSeek}
+          onVolumeChange={castSetVolume}
+          onStopCast={stopCast}
+          title={vodTitle || channel?.name}
+          posterUrl={channel?.logoUrl}
+          isLive={!directStreamUrl}
+          className="h-full"
+        />
+        
+        {/* Device picker modal */}
+        <CastDevicePicker
+          isOpen={showDevicePicker}
+          onClose={closeDevicePicker}
+          devices={castDevices}
+          onSelectDevice={(deviceId) => {
+            selectCastDevice(deviceId, {
+              url: streamUrl,
+              title: vodTitle || channel?.name || 'StreamVault',
+              posterUrl: channel?.logoUrl,
+              type: directStreamUrl ? 'vod' : 'live',
+            });
+          }}
+          isSearching={castState.status === 'discovering'}
+          error={castState.error}
+        />
+      </div>
+    );
+  }
+
   return (
     <div
       ref={containerRef}
@@ -838,6 +922,26 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
       onMouseMove={handleMouseMove}
       onMouseLeave={() => isPlaying && setShowControls(false)}
     >
+      {/* Cast device picker modal */}
+      <CastDevicePicker
+        isOpen={showDevicePicker}
+        onClose={closeDevicePicker}
+        devices={castDevices}
+        onSelectDevice={(deviceId) => {
+          const streamUrl = directStreamUrl || channel?.streamUrl;
+          if (streamUrl) {
+            selectCastDevice(deviceId, {
+              url: streamUrl,
+              title: vodTitle || channel?.name || 'StreamVault',
+              posterUrl: channel?.logoUrl,
+              type: directStreamUrl ? 'vod' : 'live',
+            });
+          }
+        }}
+        isSearching={castState.status === 'discovering'}
+        error={castState.error}
+      />
+      
       {/* Video Element */}
       <video
         ref={videoRef}
@@ -1143,6 +1247,42 @@ export function VideoPlayer({ channel, directStreamUrl, vodTitle, onPrevious, on
               >
                 <History className="w-5 h-5" />
               </Button>
+            )}
+
+            {/* Cast button */}
+            {(isChromecastAvailable || isAirPlayAvailable) && (
+              <CastButton
+                castState={castState}
+                onClick={() => {
+                  const streamUrl = directStreamUrl || channel?.streamUrl;
+                  if (!streamUrl) return;
+                  
+                  if (isCasting) {
+                    stopCast();
+                  } else {
+                    // Check if format is castable
+                    const preflight = performCastPreflight({ 
+                      url: streamUrl, 
+                      sourceType: directStreamUrl ? 'vod' : 'live' 
+                    });
+                    
+                    if (!preflight.canCast) {
+                      toast.warning('Formatet stöds inte', {
+                        description: preflight.warnings[0] || 'Detta format kan inte castas',
+                      });
+                      return;
+                    }
+                    
+                    startCast({
+                      url: streamUrl,
+                      title: vodTitle || channel?.name || 'StreamVault',
+                      posterUrl: channel?.logoUrl,
+                      type: directStreamUrl ? 'vod' : 'live',
+                      mimeHint: preflight.mimeType,
+                    });
+                  }
+                }}
+              />
             )}
 
             {/* PiP button */}
