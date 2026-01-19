@@ -42,6 +42,7 @@ import { ProtectedSetting } from "@/components/settings/ProtectedSetting";
 import { UnsavedChangesDialog } from "@/components/settings/UnsavedChangesDialog";
 import { CategoryVisibilitySettings } from "@/components/settings/CategoryVisibilitySettings";
 import { PlaylistUpdateSettings } from "@/components/settings/PlaylistUpdateSettings";
+import { StartupMetrics } from "@/components/settings/StartupMetrics";
 import { APP_CONFIG } from "@/config/app";
 import { cn } from "@/lib/utils";
 import { useSettingsStore, PROTECTED_SETTINGS } from "@/data/stores/settingsStore";
@@ -636,7 +637,10 @@ export default function SettingsPage() {
 
             {/* Categories Section */}
             {activeSection === "categories" && (
-              <CategoryVisibilitySettings />
+              <div className="space-y-6">
+                <CategoryVisibilitySettings />
+                <StartupMetrics />
+              </div>
             )}
 
             {/* Parental Section */}
