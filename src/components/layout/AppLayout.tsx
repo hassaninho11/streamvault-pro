@@ -88,8 +88,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       {/* Sidebar - respects safe area on mobile */}
       <aside
         className={cn(
-          "fixed lg:relative z-50 lg:z-0 h-full w-64 bg-sidebar border-r border-sidebar-border transition-transform duration-300 lg:translate-x-0",
-          "pt-[var(--safe-area-inset-top)] lg:pt-0",
+          "fixed inset-y-0 left-0 lg:relative z-50 lg:z-0 w-64 bg-sidebar border-r border-sidebar-border transition-transform duration-300 lg:translate-x-0",
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         )}
       >
