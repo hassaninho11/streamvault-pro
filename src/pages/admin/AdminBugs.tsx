@@ -93,12 +93,12 @@ export function AdminBugs() {
 
         {/* Filters */}
         <div className="flex flex-wrap gap-4 mb-6">
-          <Select value={severityFilter} onValueChange={setSeverityFilter}>
+          <Select value={severityFilter || 'all'} onValueChange={(v) => setSeverityFilter(v === 'all' ? '' : v)}>
             <SelectTrigger className="w-[150px]">
               <SelectValue placeholder="Allvarlighet" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Alla</SelectItem>
+              <SelectItem value="all">Alla</SelectItem>
               <SelectItem value="critical">Kritisk</SelectItem>
               <SelectItem value="high">Hög</SelectItem>
               <SelectItem value="medium">Medium</SelectItem>
@@ -106,12 +106,12 @@ export function AdminBugs() {
             </SelectContent>
           </Select>
 
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <Select value={statusFilter || 'all'} onValueChange={(v) => setStatusFilter(v === 'all' ? '' : v)}>
             <SelectTrigger className="w-[150px]">
               <SelectValue placeholder="Status" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Alla</SelectItem>
+              <SelectItem value="all">Alla</SelectItem>
               <SelectItem value="open">Öppen</SelectItem>
               <SelectItem value="triaged">Triagerad</SelectItem>
               <SelectItem value="in_progress">Pågår</SelectItem>
@@ -120,12 +120,12 @@ export function AdminBugs() {
             </SelectContent>
           </Select>
 
-          <Select value={platformFilter} onValueChange={setPlatformFilter}>
+          <Select value={platformFilter || 'all'} onValueChange={(v) => setPlatformFilter(v === 'all' ? '' : v)}>
             <SelectTrigger className="w-[150px]">
               <SelectValue placeholder="Plattform" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">Alla</SelectItem>
+              <SelectItem value="all">Alla</SelectItem>
               <SelectItem value="android">Android</SelectItem>
               <SelectItem value="ios">iOS</SelectItem>
               <SelectItem value="web">Webb</SelectItem>
