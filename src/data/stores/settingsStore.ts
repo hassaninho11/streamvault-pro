@@ -85,15 +85,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   playlistUpdatePauseLowBattery: true,
 };
 
-// Settings that require login to edit
-export const PROTECTED_SETTINGS: (keyof AppSettings)[] = [
-  'preferredSubtitleLanguage',
-  'preferredAudioLanguage',
-  'mkvPlayerPreference',
-  'customProxyUrl',
-  'parentalEnabled',
-  'parentalPin',
-];
+// Settings that require login to edit (only sync-related)
+// All other settings work for guests - only playlist sync requires login
+export const PROTECTED_SETTINGS: (keyof AppSettings)[] = [];
 
 interface SettingsState {
   // Current applied settings
