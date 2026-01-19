@@ -22,6 +22,7 @@ import {
   RefreshCw,
   LogOut,
   ChevronRight,
+  Layers,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
@@ -38,6 +39,7 @@ import { CacheManagement } from "@/components/settings/CacheManagement";
 import { SettingsSaveBar } from "@/components/settings/SettingsSaveBar";
 import { ProtectedSetting } from "@/components/settings/ProtectedSetting";
 import { UnsavedChangesDialog } from "@/components/settings/UnsavedChangesDialog";
+import { CategoryVisibilitySettings } from "@/components/settings/CategoryVisibilitySettings";
 import { APP_CONFIG } from "@/config/app";
 import { cn } from "@/lib/utils";
 import { useSettingsStore, PROTECTED_SETTINGS } from "@/data/stores/settingsStore";
@@ -54,6 +56,7 @@ interface SettingsSection {
 const sections: SettingsSection[] = [
   { id: "account", icon: User, labelKey: "settings.account" },
   { id: "player", icon: Tv, labelKey: "settings.player" },
+  { id: "categories", icon: Layers, labelKey: "Kategorier" },
   { id: "parental", icon: Shield, labelKey: "settings.parental" },
   { id: "subscription", icon: CreditCard, labelKey: "settings.subscription" },
   { id: "cache", icon: Database, labelKey: "settings.cache" },
@@ -621,6 +624,11 @@ export default function SettingsPage() {
                   </CardContent>
                 </Card>
               </>
+            )}
+
+            {/* Categories Section */}
+            {activeSection === "categories" && (
+              <CategoryVisibilitySettings />
             )}
 
             {/* Parental Section */}

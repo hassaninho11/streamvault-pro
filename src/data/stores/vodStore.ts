@@ -1,5 +1,6 @@
 /**
  * VOD Store - State management for Movies & Series
+ * Respects category visibility settings for performance
  */
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
@@ -14,6 +15,7 @@ import {
   Subtitle,
   VodPlayerSettings
 } from '@/types/vod';
+import { useCategoryVisibilityStore, createCategoryId } from './categoryVisibilityStore';
 
 interface VodState {
   // Data
@@ -200,10 +202,26 @@ export const useVodStore = create<VodState>()(
         playerSettings: { ...state.playerSettings, ...settings }
       })),
       
-      // Filtered data
+      // Filtered data - respects category visibility
       getFilteredMovies: () => {
         const { movies, currentFilter } = get();
         let filtered = [...movies];
+        
+        // Get visibility settings
+        const visibilityState = useCategoryVisibilityStore.getState();
+        const hasConfigured = visibilityState.hasConfigured.movies;
+        const visibleCategoryIds = visibilityState.visibleCategoryIds.movies;
+        
+        // Filter by category visibility
+        if (hasConfigured) {
+          filtered = filtered.filter((m) => {
+            // Movie is visible if any of its genres are visible
+            return m.genres.some((genre) => {
+              const categoryId = createCategoryId('default', 'movies', genre);
+              return visibleCategoryIds.has(categoryId);
+            });
+          });
+        }
         
         if (currentFilter.searchQuery) {
           const query = currentFilter.searchQuery.toLowerCase();
@@ -258,6 +276,22 @@ export const useVodStore = create<VodState>()(
       getFilteredSeries: () => {
         const { series, currentFilter } = get();
         let filtered = [...series];
+        
+        // Get visibility settings
+        const visibilityState = useCategoryVisibilityStore.getState();
+        const hasConfigured = visibilityState.hasConfigured.series;
+        const visibleCategoryIds = visibilityState.visibleCategoryIds.series;
+        
+        // Filter by category visibility
+        if (hasConfigured) {
+          filtered = filtered.filter((s) => {
+            // Series is visible if any of its genres are visible
+            return s.genres.some((genre) => {
+              const categoryId = createCategoryId('default', 'series', genre);
+              return visibleCategoryIds.has(categoryId);
+            });
+          });
+        }
         
         if (currentFilter.searchQuery) {
           const query = currentFilter.searchQuery.toLowerCase();
