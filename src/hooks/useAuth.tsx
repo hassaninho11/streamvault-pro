@@ -3,6 +3,7 @@ import { User, Session } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { syncEngine, SyncStrategy } from "@/data/stores/syncEngine";
 import { entitlementsService } from "@/services/EntitlementsService";
+import { bugReportService } from "@/services/BugReportService";
 
 interface AuthContextType {
   user: User | null;
@@ -38,6 +39,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setTimeout(() => {
             syncEngine.startAutoSync(session.user.id);
           }, 0);
+          // Update last seen for DAU/MAU tracking
+          bugReportService.updateLastSeen();
         } else if (event === 'SIGNED_OUT') {
           syncEngine.stopAutoSync();
         }
@@ -52,6 +55,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (session?.user) {
         syncEngine.startAutoSync(session.user.id);
+        // Update last seen for DAU/MAU tracking
+        bugReportService.updateLastSeen();
       }
     });
 
