@@ -1,6 +1,10 @@
 /**
- * VlcBridgeEngine - VLC fallback engine for formats not supported by ExoPlayer
- * Uses libVLC via Capacitor bridge for maximum format compatibility
+ * VlcBridgeEngine - In-app VLC engine using libVLC via Capacitor bridge
+ * 
+ * CRITICAL: This uses the native libVLC library embedded in the app.
+ * It does NOT launch external VLC app. All playback happens in-app.
+ * 
+ * Supports: MKV, AVI, RMVB, TS, FLV, WMV, AC3, DTS, HEVC, and more.
  */
 
 import { BaseEngine } from './BaseEngine';
@@ -8,6 +12,8 @@ import {
   MediaSource, 
   EngineCapabilities, 
   EngineFactory,
+  SubtitleTrack,
+  AudioTrack,
 } from '../types';
 import { 
   isNativePlatform, 
@@ -24,11 +30,36 @@ interface VlcPlaybackState {
   buffered: number;
   volume: number;
   isMuted: boolean;
+  playbackRate?: number;
 }
 
 interface VlcError {
   code: string;
   message: string;
+}
+
+interface VlcTrack {
+  id: string;
+  label: string;
+  language?: string;
+  selected?: boolean;
+}
+
+interface VlcEngineInfo {
+  engine: string;
+  displayName: string;
+  version: string;
+  capabilities: {
+    drm: boolean;
+    casting: boolean;
+    pip: boolean;
+    hls: boolean;
+    dash: boolean;
+    mkv: boolean;
+    avi: boolean;
+    ac3: boolean;
+    hevc: boolean;
+  };
 }
 
 interface VlcPlugin {
@@ -44,11 +75,19 @@ interface VlcPlugin {
   seek(options: { position: number }): Promise<void>;
   setVolume(options: { volume: number }): Promise<void>;
   setMuted(options: { muted: boolean }): Promise<void>;
+  setPlaybackRate(options: { rate: number }): Promise<void>;
   getState(): Promise<VlcPlaybackState>;
+  getAudioTracks(): Promise<{ tracks: VlcTrack[] }>;
+  setAudioTrack(options: { trackId: string }): Promise<void>;
+  getSubtitleTracks(): Promise<{ tracks: VlcTrack[] }>;
+  setSubtitleTrack(options: { trackId: string }): Promise<void>;
+  addExternalSubtitle(options: { url: string }): Promise<{ success: boolean }>;
+  getEngineInfo(): Promise<VlcEngineInfo>;
   destroy(): Promise<void>;
   addListener(event: 'stateChange', callback: (event: { state: VlcPlaybackState }) => void): Promise<PluginListenerHandle>;
   addListener(event: 'error', callback: (event: { error: VlcError }) => void): Promise<PluginListenerHandle>;
   addListener(event: 'timeUpdate', callback: (event: { currentTime: number; duration: number }) => void): Promise<PluginListenerHandle>;
+  addListener(event: 'buffering', callback: (event: { percent: number }) => void): Promise<PluginListenerHandle>;
   removeAllListeners(): Promise<void>;
 }
 
@@ -57,11 +96,11 @@ const VlcPlayback = registerPlugin<VlcPlugin>('VlcPlayback', {
   web: () => import('../VlcPlaybackWeb').then(m => new m.VlcPlaybackWeb()),
 });
 
-// ============= VLC Bridge Engine =============
+// ============= VLC Bridge Engine (In-App libVLC) =============
 
 export class VlcBridgeEngine extends BaseEngine {
   readonly id = 'vlc-bridge';
-  readonly displayName = 'VLC (Kompatibilitet)';
+  readonly displayName = 'VLC (In-App)';
   readonly supports: EngineCapabilities = {
     live: true,
     vod: true,
@@ -75,13 +114,14 @@ export class VlcBridgeEngine extends BaseEngine {
   
   private listeners: PluginListenerHandle[] = [];
   private isDestroyed = false;
+  private vlcVersion: string = '';
   
   async load(source: MediaSource): Promise<void> {
     if (this.isDestroyed) {
       throw new Error('Engine is destroyed');
     }
     
-    console.log('[VlcBridge] Loading source:', source.url.substring(0, 80));
+    console.log('[VlcBridge] Loading source with in-app libVLC:', source.url.substring(0, 80));
     this.source = source;
     this.setStatus('loading');
     
@@ -89,6 +129,15 @@ export class VlcBridgeEngine extends BaseEngine {
     await this.removeListeners();
     
     try {
+      // Get engine info (version, capabilities)
+      try {
+        const info = await VlcPlayback.getEngineInfo();
+        this.vlcVersion = info.version;
+        console.log('[VlcBridge] VLC version:', this.vlcVersion);
+      } catch (e) {
+        console.warn('[VlcBridge] Could not get engine info:', e);
+      }
+      
       // Register event listeners
       const stateListener = await VlcPlayback.addListener('stateChange', (event) => {
         this.handleVlcStateChange(event.state);
@@ -108,7 +157,14 @@ export class VlcBridgeEngine extends BaseEngine {
       });
       this.listeners.push(timeListener);
       
-      // Load the stream
+      const bufferingListener = await VlcPlayback.addListener('buffering', (event) => {
+        if (event.percent < 100) {
+          this.updateState({ buffered: event.percent / 100 });
+        }
+      });
+      this.listeners.push(bufferingListener);
+      
+      // Load the stream with headers if provided
       await VlcPlayback.load({
         url: source.url,
         headers: source.headers,
@@ -116,7 +172,10 @@ export class VlcBridgeEngine extends BaseEngine {
         autoPlay: true,
       });
       
-      console.log('[VlcBridge] Load initiated successfully');
+      console.log('[VlcBridge] Load initiated successfully (in-app VLC)');
+      
+      // Refresh available tracks after load
+      setTimeout(() => this.refreshTracks(), 1500);
       
     } catch (error) {
       console.error('[VlcBridge] Load failed:', error);
@@ -125,6 +184,34 @@ export class VlcBridgeEngine extends BaseEngine {
         error instanceof Error ? error.message : 'Failed to load VLC player',
         true
       ));
+    }
+  }
+  
+  private async refreshTracks(): Promise<void> {
+    try {
+      // Get audio tracks
+      const audioResult = await VlcPlayback.getAudioTracks();
+      this.audioTracks = audioResult.tracks.map(t => ({
+        id: t.id,
+        label: t.label,
+        lang: t.language || 'und',
+      }));
+      
+      // Get subtitle tracks
+      const subResult = await VlcPlayback.getSubtitleTracks();
+      this.subtitleTracks = subResult.tracks.map(t => ({
+        id: t.id,
+        label: t.label,
+        lang: t.language || 'und',
+        kind: 'embedded' as const,
+      }));
+      
+      console.log('[VlcBridge] Tracks refreshed:', {
+        audio: this.audioTracks.length,
+        subtitles: this.subtitleTracks.length,
+      });
+    } catch (e) {
+      console.warn('[VlcBridge] Failed to refresh tracks:', e);
     }
   }
   
@@ -160,6 +247,7 @@ export class VlcBridgeEngine extends BaseEngine {
       buffered: state.buffered,
       volume: state.volume,
       isMuted: state.isMuted,
+      playbackRate: state.playbackRate || 1,
     });
   }
   
@@ -211,9 +299,44 @@ export class VlcBridgeEngine extends BaseEngine {
   }
   
   setPlaybackRate(rate: number): void {
-    // VLC doesn't support variable playback rate through this bridge
-    console.log('[VlcBridge] Playback rate not supported:', rate);
+    if (this.isDestroyed) return;
+    VlcPlayback.setPlaybackRate({ rate });
+    this.updateState({ playbackRate: rate });
   }
+  
+  // ============= Track Management =============
+  
+  listSubtitles(): SubtitleTrack[] {
+    return [...this.subtitleTracks];
+  }
+  
+  async setSubtitle(id?: string): Promise<void> {
+    await VlcPlayback.setSubtitleTrack({ trackId: id || '-1' });
+    this.updateState({ currentSubtitleId: id });
+  }
+  
+  listAudioTracks(): AudioTrack[] {
+    return [...this.audioTracks];
+  }
+  
+  async setAudioTrack(id?: string): Promise<void> {
+    if (id) {
+      await VlcPlayback.setAudioTrack({ trackId: id });
+      this.updateState({ currentAudioId: id });
+    }
+  }
+  
+  async addExternalSubtitle(url: string): Promise<void> {
+    try {
+      await VlcPlayback.addExternalSubtitle({ url });
+      // Refresh tracks to include the new subtitle
+      setTimeout(() => this.refreshTracks(), 500);
+    } catch (e) {
+      console.error('[VlcBridge] Failed to add external subtitle:', e);
+    }
+  }
+  
+  // ============= Cleanup =============
   
   private async removeListeners(): Promise<void> {
     for (const listener of this.listeners) {
@@ -227,7 +350,7 @@ export class VlcBridgeEngine extends BaseEngine {
   }
   
   async destroy(): Promise<void> {
-    console.log('[VlcBridge] Destroying engine');
+    console.log('[VlcBridge] Destroying in-app VLC engine');
     this.isDestroyed = true;
     
     await this.removeListeners();
@@ -241,6 +364,14 @@ export class VlcBridgeEngine extends BaseEngine {
     
     this.stateListeners.clear();
     this.source = null;
+    this.subtitleTracks = [];
+    this.audioTracks = [];
+  }
+  
+  // ============= Info =============
+  
+  getVlcVersion(): string {
+    return this.vlcVersion;
   }
 }
 
@@ -248,16 +379,17 @@ export class VlcBridgeEngine extends BaseEngine {
 
 export const VlcBridgeEngineFactory: EngineFactory = {
   id: 'vlc-bridge',
-  displayName: 'VLC (Kompatibilitet)',
+  displayName: 'VLC (In-App)',
   priority: 10, // Lower priority than ExoPlayer - used as fallback
   
   isAvailable(): boolean {
-    // VLC is available on native platforms
-    return isNativePlatform() && (getPlatform() === 'android' || getPlatform() === 'ios');
+    // VLC is available on native Android (libVLC)
+    // iOS support can be added later with MobileVLCKit
+    return isNativePlatform() && getPlatform() === 'android';
   },
   
   supportsSource(_source: MediaSource): boolean {
-    // VLC can play almost anything
+    // VLC can play almost anything - MKV, AVI, RMVB, etc.
     return true;
   },
   

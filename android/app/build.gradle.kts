@@ -61,6 +61,9 @@ dependencies {
     // For smooth streaming
     implementation("androidx.media3:media3-exoplayer-smoothstreaming:$media3Version")
     
+    // libVLC for in-app VLC playback (fallback engine)
+    implementation("org.videolan.android:libvlc-all:3.6.0")
+    
     // Testing
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
