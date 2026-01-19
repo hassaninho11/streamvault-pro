@@ -39,7 +39,10 @@ export function ChannelLogo({ src, name, size = "md", className }: ChannelLogoPr
           loading="lazy"
           onError={(e) => {
             e.currentTarget.style.display = "none";
-            e.currentTarget.parentElement!.innerHTML = `<span class="font-semibold text-muted-foreground">${initials}</span>`;
+            const span = document.createElement('span');
+            span.className = 'font-semibold text-muted-foreground';
+            span.textContent = initials; // Safe - no HTML parsing
+            e.currentTarget.parentElement!.replaceChildren(span);
           }}
         />
       </div>
