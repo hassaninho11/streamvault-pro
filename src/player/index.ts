@@ -1,5 +1,14 @@
 /**
  * Player module exports
+ * 
+ * CRITICAL ARCHITECTURE NOTE:
+ * On Android, ALL playback MUST use native ExoPlayer/VLC via NativeBridges.
+ * WebView video playback is NOT allowed for IPTV content.
+ * 
+ * Playback Flow:
+ * 1. SmartPlayer detects platform
+ * 2. Android/iOS → NativePlayerView → AndroidPlaybackController → ExoPlayer/VLC
+ * 3. Web → VideoPlayer → HLS.js
  */
 
 // Types
@@ -8,6 +17,8 @@ export * from './types';
 // Engines
 export { Html5Engine, Html5EngineFactory } from './engines/Html5Engine';
 export { ShakaEngine, ShakaEngineFactory } from './engines/ShakaEngine';
+export { ExoPlayerBridgeEngine, ExoPlayerBridgeEngineFactory } from './engines/ExoPlayerBridgeEngine';
+export { VlcBridgeEngine, VlcBridgeEngineFactory } from './engines/VlcBridgeEngine';
 export { 
   ExoPlayerEngine, 
   ExoPlayerEngineFactory,
@@ -20,7 +31,17 @@ export {
 // Registry
 export { PlayerEngineRegistry } from './PlayerEngineRegistry';
 
-// Controllers
+// Android Playback Controller (Primary for Android IPTV)
+export {
+  AndroidPlaybackController,
+  getAndroidPlaybackController,
+  resetAndroidPlaybackController,
+  isAndroidPlaybackAvailable,
+  type AndroidPlaybackEvents,
+  type AndroidEngineType,
+} from './AndroidPlaybackController';
+
+// Unified Player Controller (Web/Fallback)
 export { 
   UnifiedPlayerController, 
   getPlayerController, 
@@ -28,6 +49,7 @@ export {
   type PlayerControllerEvents,
 } from './UnifiedPlayerController';
 
+// Cast Controller
 export {
   CastController,
   getCastController,
@@ -63,6 +85,7 @@ export {
   type MkvPlayerPreference,
 } from './MediaPreflight';
 
+// Playback Strategy Resolver
 export {
   executeStrategy,
   resolvePlayback,
@@ -73,3 +96,15 @@ export {
   type StrategyContext,
   type StrategyResult,
 } from './PlaybackStrategyResolver';
+
+// Native Playback Plugin (Capacitor bridge)
+export {
+  NativePlayback,
+  isNativePlatform,
+  getPlatform,
+  hashUrlForLog,
+  type PlaybackState,
+  type PlaybackError,
+  type StreamInfo,
+  type LoadOptions,
+} from './NativePlaybackPlugin';
