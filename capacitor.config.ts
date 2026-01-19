@@ -10,6 +10,9 @@ const config: CapacitorConfig = {
   },
   android: {
     allowMixedContent: true,
+    // Handle edge-to-edge display for Android 15+ (API 35)
+    // 'force' ensures margins are applied on all Android versions
+    adjustMarginsForEdgeToEdge: 'force',
   },
   ios: {
     allowsLinkPreview: false,
