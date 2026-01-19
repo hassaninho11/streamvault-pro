@@ -22,23 +22,21 @@
     <meta name="twitter:site" content="@Lovable" />
     <meta name="twitter:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
     
-    <!-- Critical: Android Capacitor safe area fallback -->
+    <!-- Critical: Android/iOS Capacitor safe area fallback -->
     <!-- This script runs BEFORE React and ensures status bar spacing -->
     <script>
       (function() {
-        // Detect if running in Capacitor on Android
-        var ua = navigator.userAgent.toLowerCase();
-        var isAndroid = ua.indexOf('android') > -1;
-        var isCapacitor = typeof window.Capacitor !== 'undefined' || ua.indexOf('capacitor') > -1;
+        var ua = navigator.userAgent || '';
+        var isAndroid = /android/i.test(ua);
+        var isIOS = /iphone|ipad|ipod/i.test(ua);
+        var isMobile = /mobile|tablet/i.test(ua) || window.innerWidth < 1024;
         
-        // Also check for common Android WebView indicators
-        var isWebView = ua.indexOf('wv') > -1 || ua.indexOf('webview') > -1;
-        
-        if (isAndroid && (isCapacitor || isWebView)) {
-          // Apply 48px fallback for Android status bar
-          // This will be overwritten by JS if SafeArea plugin works
-          document.documentElement.style.setProperty('--safe-area-inset-top', '48px');
-          console.log('[SafeArea] Android detected, applied 48px fallback');
+        // Apply safe area for any mobile device to be safe
+        if ((isAndroid || isIOS) && isMobile) {
+          // Pixel 9 Pro XL needs ~60px, use 56px as safe default
+          var topInset = isAndroid ? '56px' : '47px';
+          document.documentElement.style.setProperty('--safe-area-inset-top', topInset);
+          console.log('[SafeArea] Mobile detected, applied ' + topInset + ' fallback');
         }
       })();
     </script>

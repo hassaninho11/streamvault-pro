@@ -2,8 +2,8 @@ import { Capacitor } from '@capacitor/core';
 import { StatusBar, Style } from '@capacitor/status-bar';
 
 // Fallback status bar heights for common devices (in pixels)
-// Pixel 9 Pro XL typically has ~145px status bar at high DPI
-const ANDROID_STATUS_BAR_FALLBACK = 48;
+// Pixel 9 Pro XL has high DPI, needs ~56px
+const ANDROID_STATUS_BAR_FALLBACK = 56;
 const IOS_STATUS_BAR_FALLBACK = 47;
 
 /**
