@@ -129,10 +129,12 @@ export default function SettingsPage() {
     return PROTECTED_SETTINGS.includes(key as any);
   };
   
+  // Player engine options - TiviMate style
   const engineOptions = [
-    { id: "auto", displayName: "Auto (Recommended)" },
-    { id: "shaka", displayName: "Shaka Player" },
-    { id: "html5", displayName: "HTML5 (Fallback)" },
+    { id: "auto", displayName: "Auto (Rekommenderad)", description: "Väljer bästa motor automatiskt" },
+    { id: "exo", displayName: "ExoPlayer", description: "Standardspelare för Android" },
+    { id: "vlc", displayName: "VLC (In-App)", description: "Bäst för MKV och kompatibilitet" },
+    { id: "external", displayName: "Extern spelare", description: "Öppna i VLC/MX Player", advanced: true },
   ];
 
   const trialDaysRemaining = APP_CONFIG.subscription.trialDays;
@@ -398,31 +400,67 @@ export default function SettingsPage() {
                 <Card variant="glass">
                   <CardHeader>
                     <CardTitle>{t('settings.player')}</CardTitle>
-                    <CardDescription>{t('settings.playerEngineDesc')}</CardDescription>
+                    <CardDescription>Konfigurera spelarmotorer för uppspelning</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-6">
+                    {/* Main Engine Selection */}
                     <div className="flex items-center justify-between">
-                      <div>
+                      <div className="flex-1 mr-4">
                         <Label>{t('settings.playerEngine')}</Label>
-                        <p className="text-sm text-muted-foreground">{t('settings.playerEngineDesc')}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {engineOptions.find(e => e.id === draftSettings.preferredEngine)?.description || 
+                           t('settings.playerEngineDesc')}
+                        </p>
                       </div>
                       <Select 
                         value={draftSettings.preferredEngine} 
-                        onValueChange={(v) => updateDraft('preferredEngine', v as any)}
+                        onValueChange={(v) => {
+                          updateDraft('preferredEngine', v as any);
+                          // Warn if selecting external
+                          if (v === 'external') {
+                            updateDraft('allowExternalPlayer', true);
+                          }
+                        }}
                       >
-                        <SelectTrigger className="w-48">
+                        <SelectTrigger className="w-52">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {engineOptions.map(opt => (
+                          {engineOptions.filter(opt => !opt.advanced).map(opt => (
                             <SelectItem key={opt.id} value={opt.id}>
-                              {opt.displayName}
+                              <div className="flex items-center gap-2">
+                                {opt.id === 'exo' && <Badge variant="outline" className="bg-green-500/20 text-green-400 text-[10px] px-1">EXO</Badge>}
+                                {opt.id === 'vlc' && <Badge variant="outline" className="bg-orange-500/20 text-orange-400 text-[10px] px-1">VLC</Badge>}
+                                {opt.displayName}
+                              </div>
                             </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
                     </div>
+                    
                     <Separator />
+                    
+                    {/* Auto Player Selection Toggle */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <Zap className="w-5 h-5 text-muted-foreground" />
+                        <div>
+                          <Label>Smart Auto-växling</Label>
+                          <p className="text-sm text-muted-foreground">
+                            Byt automatiskt motor vid uppspelningsproblem
+                          </p>
+                        </div>
+                      </div>
+                      <Switch
+                        checked={draftSettings.autoPlayerSelection}
+                        onCheckedChange={(v) => updateDraft('autoPlayerSelection', v)}
+                      />
+                    </div>
+                    
+                    <Separator />
+                    
+                    {/* Buffer Mode */}
                     <div className="flex items-center justify-between">
                       <div>
                         <Label>{t('settings.bufferMode')}</Label>
@@ -442,29 +480,100 @@ export default function SettingsPage() {
                         </SelectContent>
                       </Select>
                     </div>
+                    
                     <Separator />
+                    
+                    {/* MKV Player Preference */}
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <Label>{t('settings.mkvPlayer')}</Label>
+                        <p className="text-sm text-muted-foreground">{t('settings.mkvPlayerDesc')}</p>
+                      </div>
+                      <Select 
+                        value={draftSettings.mkvPlayerPreference} 
+                        onValueChange={(v) => updateDraft('mkvPlayerPreference', v as any)}
+                      >
+                        <SelectTrigger className="w-48">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="auto">Auto (Rekommenderad)</SelectItem>
+                          <SelectItem value="exo">
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className="bg-green-500/20 text-green-400 text-[10px] px-1">EXO</Badge>
+                              ExoPlayer
+                            </div>
+                          </SelectItem>
+                          <SelectItem value="vlc">
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className="bg-orange-500/20 text-orange-400 text-[10px] px-1">VLC</Badge>
+                              VLC (In-App)
+                            </div>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </CardContent>
+                </Card>
+                
+                {/* Advanced Player Options */}
+                <Card variant="glass">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4 text-warning" />
+                      Avancerade alternativ
+                    </CardTitle>
+                    <CardDescription>Inställningar för expertanvändare</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
                     <ProtectedSetting>
                       <div className="flex items-center justify-between">
-                        <div>
-                          <Label>{t('settings.mkvPlayer')}</Label>
-                          <p className="text-sm text-muted-foreground">{t('settings.mkvPlayerDesc')}</p>
+                        <div className="flex items-center gap-3">
+                          <Server className="w-5 h-5 text-muted-foreground" />
+                          <div>
+                            <Label>Tillåt extern spelare</Label>
+                            <p className="text-sm text-muted-foreground">
+                              Öppna i VLC/MX Player app som sista utväg
+                            </p>
+                          </div>
                         </div>
-                        <Select 
-                          value={draftSettings.mkvPlayerPreference} 
-                          onValueChange={(v) => updateDraft('mkvPlayerPreference', v as any)}
+                        <Switch
+                          checked={draftSettings.allowExternalPlayer}
+                          onCheckedChange={(v) => updateDraft('allowExternalPlayer', v)}
                           disabled={isGuest}
-                        >
-                          <SelectTrigger className="w-48">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="auto">Auto (Recommended)</SelectItem>
-                            <SelectItem value="native">Native (Standard)</SelectItem>
-                            <SelectItem value="vlc">VLC (Compatibility)</SelectItem>
-                          </SelectContent>
-                        </Select>
+                        />
                       </div>
                     </ProtectedSetting>
+                    
+                    {draftSettings.allowExternalPlayer && (
+                      <div className="p-3 rounded-lg bg-warning/10 border border-warning/20">
+                        <div className="flex items-start gap-2">
+                          <AlertCircle className="w-4 h-4 text-warning mt-0.5" />
+                          <div className="text-sm text-warning">
+                            <p className="font-medium">Varning</p>
+                            <p className="text-warning/80">
+                              Externa spelare kan exponera din spellistans URL. Använd endast om inbyggda motorer inte fungerar.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    
+                    <Separator />
+                    
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <Zap className="w-5 h-5 text-muted-foreground" />
+                        <div>
+                          <Label>{t('settings.hardwareAcceleration')}</Label>
+                          <p className="text-sm text-muted-foreground">{t('settings.hardwareAccelerationDesc')}</p>
+                        </div>
+                      </div>
+                      <Switch
+                        checked={draftSettings.hardwareAcceleration}
+                        onCheckedChange={(v) => updateDraft('hardwareAcceleration', v)}
+                      />
+                    </div>
                   </CardContent>
                 </Card>
 
