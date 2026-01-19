@@ -22,5 +22,8 @@ class MainActivity : BridgeActivity() {
         // This ensures the WebView content respects system bar boundaries
         // and does not render behind the status bar
         WindowCompat.setDecorFitsSystemWindows(window, true)
+        
+        // Register NativePlayback plugin
+        registerPlugin(NativePlaybackPlugin::class.java)
     }
 }
