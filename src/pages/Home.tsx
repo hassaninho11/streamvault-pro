@@ -18,6 +18,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ChannelLogo, LiveIndicator } from "@/components/ui/custom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { APP_CONFIG } from "@/config/app";
+import { BUILD_INFO } from "@/config/build";
 import { useChannelLoader } from "@/hooks/useChannelLoader";
 import { useChannelStore, useFilteredChannelIds, useFavoriteIds } from "@/data/stores/channelStore";
 import { useProviders } from "@/hooks/useProviders";
@@ -96,7 +97,7 @@ export default function HomePage() {
             <Zap className="w-10 h-10 text-primary-foreground" />
           </div>
           <h1 className="text-3xl font-bold mb-2 text-center">Välkommen till {APP_CONFIG.name}</h1>
-          <p className="text-xs text-muted-foreground/50 mb-1 font-mono">Build: v2025.01.19-B</p>
+          <p className="text-xs text-muted-foreground/50 mb-1 font-mono">{BUILD_INFO.displayVersion}</p>
           
           {/* Trial Badge */}
           <div className="mb-4">
@@ -167,6 +168,11 @@ export default function HomePage() {
   return (
     <AppLayout>
       <div className="p-6 space-y-8">
+        {/* Version indicator */}
+        <div className="flex justify-end">
+          <span className="text-xs text-muted-foreground/40 font-mono">{BUILD_INFO.displayVersion}</span>
+        </div>
+        
         {/* Hero Section - Continue Watching */}
         {recentChannels.length > 0 && (
           <section>
