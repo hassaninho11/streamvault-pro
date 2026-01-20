@@ -37,6 +37,12 @@ android {
     }
 }
 
+// Fix for RuntimeClasspathCopy configuration issue in Android Studio sync
+configurations.matching { it.name.endsWith("RuntimeClasspathCopy") }.configureEach {
+    isCanBeResolved = true
+    isCanBeConsumed = false
+}
+
 dependencies {
     // Capacitor
     implementation(project(":capacitor-android"))
