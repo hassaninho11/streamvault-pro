@@ -1,6 +1,9 @@
 /**
  * NativePlayerView - Player component for Android/iOS native playback
  * Uses ExoPlayer on Android and AVPlayer on iOS with VLC fallback
+ * 
+ * CRITICAL: This component ALWAYS attempts playback.
+ * No blocking screens - errors show actionable fallback options.
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -20,6 +23,8 @@ import {
   ArrowLeft,
   RefreshCw,
   ExternalLink,
+  Copy,
+  Smartphone,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
@@ -29,11 +34,9 @@ import { PlayerState, MediaSource } from '@/player/types';
 import { 
   AndroidPlaybackController, 
   getAndroidPlaybackController,
-  isAndroidPlaybackAvailable,
 } from '@/player/AndroidPlaybackController';
 import { 
   NativePlayback, 
-  isNativePlatform,
   getPlatform,
 } from '@/player/NativePlaybackPlugin';
 import { PlayerLock, PlayerLockOverlay } from './PlayerLock';
@@ -62,9 +65,10 @@ export function NativePlayerView({
 }: NativePlayerViewProps) {
   const { isTVMode } = useTVMode();
   const controllerRef = useRef<AndroidPlaybackController | null>(null);
+  const initAttempted = useRef(false);
   
   const [state, setState] = useState<PlayerState>({
-    status: 'idle',
+    status: 'loading', // Start with loading, not idle
     currentTime: 0,
     duration: 0,
     buffered: 0,
@@ -76,9 +80,12 @@ export function NativePlayerView({
   
   const [showControls, setShowControls] = useState(true);
   const [isLocked, setIsLocked] = useState(false);
-  const [currentEngine, setCurrentEngine] = useState<string>('none');
-  const [isNativeAvailable, setIsNativeAvailable] = useState<boolean | null>(null);
-  const [pluginError, setPluginError] = useState<string | null>(null);
+  const [currentEngine, setCurrentEngine] = useState<string>('exo');
+  const [playbackError, setPlaybackError] = useState<{
+    code: string;
+    message: string;
+    isPluginError: boolean;
+  } | null>(null);
   
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
@@ -87,56 +94,38 @@ export function NativePlayerView({
   const title = vodTitle || channel?.name || 'Stream';
   const isVod = !!directStreamUrl;
   
-  // Check native availability and initialize controller
+  // Initialize controller and start playback immediately
   useEffect(() => {
-    const checkAndInitialize = async () => {
-      // First check if platform is Android
+    if (initAttempted.current) return;
+    initAttempted.current = true;
+    
+    const initAndPlay = async () => {
       const platform = getPlatform();
-      const isNative = isNativePlatform();
+      console.log(`[NativePlayerView] Initializing on platform: ${platform}`);
       
-      console.log(`[NativePlayerView] Platform: ${platform}, isNative: ${isNative}`);
-      
-      if (!isNative || platform !== 'android') {
-        console.warn('[NativePlayerView] Not running on Android native');
-        setIsNativeAvailable(false);
-        setPluginError('Appen körs inte som native Android-app');
-        return;
-      }
-      
-      // Check if the NativePlayback plugin is actually available
+      // Check if plugin is available
       try {
         const info = await NativePlayback.getEngineInfo();
         console.log('[NativePlayerView] Plugin info:', info);
         
-        if (info?.platform !== 'android') {
-          throw new Error('Plugin returned non-Android platform');
+        if (info?.platform !== 'android' && info?.platform !== 'ios') {
+          throw new Error('Native plugin not available for this platform');
         }
-        
-        setIsNativeAvailable(true);
-        setPluginError(null);
       } catch (err: any) {
-        console.error('[NativePlayerView] Plugin not available:', err);
-        setIsNativeAvailable(false);
+        console.error('[NativePlayerView] Plugin check failed:', err);
         
         const isNotImplemented = err?.message?.includes('not implemented') || 
                                  err?.code === 'UNIMPLEMENTED';
-        setPluginError(
-          isNotImplemented 
-            ? 'NativePlayback-plugin ej implementerat. Bygg appen lokalt med Android Studio.'
-            : `Plugin-fel: ${err?.message || 'Okänt fel'}`
-        );
         
-        setState(prev => ({
-          ...prev,
-          status: 'error',
-          error: {
-            code: 'NATIVE_PLUGIN_UNAVAILABLE',
-            message: isNotImplemented 
-              ? 'Native-plugin ej tillgängligt. Bygg appen med: git pull, npm run build, npx cap sync android, och kör från Android Studio.'
-              : err?.message || 'Native-plugin kunde inte laddas',
-            recoverable: false,
-          },
-        }));
+        setPlaybackError({
+          code: 'PLUGIN_UNAVAILABLE',
+          message: isNotImplemented 
+            ? 'Native-plugin ej tillgängligt'
+            : err?.message || 'Kunde inte ladda native-plugin',
+          isPluginError: true,
+        });
+        
+        setState(prev => ({ ...prev, status: 'error' }));
         return;
       }
       
@@ -145,35 +134,46 @@ export function NativePlayerView({
         const controller = getAndroidPlaybackController({
           onStateChange: (newState) => {
             setState(newState);
+            if (newState.error) {
+              setPlaybackError({
+                code: newState.error.code,
+                message: newState.error.message,
+                isPluginError: false,
+              });
+            }
           },
           onEngineChange: (engineId, reason) => {
             setCurrentEngine(engineId);
             console.log(`[NativePlayerView] Engine changed to ${engineId} (${reason})`);
+            if (reason) {
+              toast.info(`Motor: ${engineId === 'vlc-bridge' ? 'VLC' : 'ExoPlayer'}`);
+            }
           },
           onError: (error) => {
             console.error('[NativePlayerView] Playback error:', error);
-            if (!error.recoverable) {
-              toast.error(error.message);
-            }
+            setPlaybackError({
+              code: error.code,
+              message: error.message,
+              isPluginError: false,
+            });
           },
         });
         
         controllerRef.current = controller;
-      } catch (err) {
-        console.error('[NativePlayerView] Failed to initialize controller:', err);
-        setState(prev => ({
-          ...prev,
-          status: 'error',
-          error: {
-            code: 'CONTROLLER_INIT_FAILED',
-            message: 'Kunde inte starta native-spelaren. Försök starta om appen.',
-            recoverable: false,
-          },
-        }));
+        setPlaybackError(null);
+        
+      } catch (err: any) {
+        console.error('[NativePlayerView] Controller init failed:', err);
+        setPlaybackError({
+          code: 'INIT_FAILED',
+          message: 'Kunde inte starta spelaren',
+          isPluginError: true,
+        });
+        setState(prev => ({ ...prev, status: 'error' }));
       }
     };
     
-    checkAndInitialize();
+    initAndPlay();
     
     return () => {
       controllerRef.current?.destroy();
@@ -181,9 +181,11 @@ export function NativePlayerView({
     };
   }, []);
   
-  // Load stream when URL changes
+  // Load stream when URL changes or controller is ready
   useEffect(() => {
     if (!streamUrl || !controllerRef.current) return;
+    
+    console.log(`[NativePlayerView] Loading stream: ${streamUrl.substring(0, 50)}...`);
     
     const source: MediaSource = {
       url: streamUrl,
@@ -192,6 +194,7 @@ export function NativePlayerView({
     };
     
     controllerRef.current.load(source);
+    setPlaybackError(null);
     
     return () => {
       controllerRef.current?.stop();
@@ -238,6 +241,7 @@ export function NativePlayerView({
   
   const handleRetry = useCallback(() => {
     if (streamUrl && controllerRef.current) {
+      setPlaybackError(null);
       const source: MediaSource = {
         url: streamUrl,
         type: isVod ? 'vod' : 'live',
@@ -255,6 +259,26 @@ export function NativePlayerView({
     controllerRef.current?.switchToExoPlayer();
   }, []);
   
+  // Open in external player
+  const handleOpenExternal = useCallback((player: 'vlc' | 'mx') => {
+    if (!streamUrl) return;
+    
+    if (player === 'vlc') {
+      window.open(`vlc://${streamUrl}`, '_blank');
+    } else {
+      // MX Player intent
+      window.open(`intent:${streamUrl}#Intent;package=com.mxtech.videoplayer.ad;end`, '_blank');
+    }
+  }, [streamUrl]);
+  
+  // Copy URL to clipboard
+  const handleCopyUrl = useCallback(() => {
+    if (streamUrl) {
+      navigator.clipboard.writeText(streamUrl);
+      toast.success('URL kopierad');
+    }
+  }, [streamUrl]);
+  
   // Format time
   const formatTime = (seconds: number): string => {
     const h = Math.floor(seconds / 3600);
@@ -269,7 +293,7 @@ export function NativePlayerView({
   
   const isBuffering = state.status === 'loading' || state.status === 'buffering';
   const isPlaying = state.status === 'playing';
-  const hasError = state.status === 'error';
+  const hasError = state.status === 'error' || !!playbackError;
   
   return (
     <div 
@@ -292,64 +316,68 @@ export function NativePlayerView({
       </div>
       
       {/* Buffering indicator */}
-      {isBuffering && (
+      {isBuffering && !hasError && (
         <div className="absolute inset-0 flex items-center justify-center bg-black/30">
           <Loader2 className="w-16 h-16 animate-spin text-primary" />
         </div>
       )}
       
-      {/* Error screen */}
+      {/* Error screen - ACTIONABLE, NO BLOCKING INSTRUCTIONS */}
       {hasError && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 p-6">
-          <AlertCircle className="w-16 h-16 text-destructive mb-4" />
-          <h3 className="text-xl font-semibold text-foreground mb-2">
-            {pluginError ? 'Native-spelare ej tillgänglig' : 'Uppspelningsfel'}
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 p-6">
+          <AlertCircle className="w-12 h-12 text-destructive mb-4" />
+          <h3 className="text-lg font-semibold text-foreground mb-2">
+            {playbackError?.isPluginError ? 'Native-spelare ej tillgänglig' : 'Uppspelningsfel'}
           </h3>
-          <p className="text-muted-foreground text-center mb-4 max-w-md">
-            {state.error?.message || pluginError || 'Kunde inte spela upp strömmen'}
+          <p className="text-muted-foreground text-center mb-6 max-w-sm text-sm">
+            {playbackError?.message || state.error?.message || 'Kunde inte spela upp strömmen'}
           </p>
           
-          {/* Build instructions for plugin error */}
-          {pluginError && (
-            <div className="mb-6 p-3 bg-muted/50 rounded-lg text-xs text-muted-foreground max-w-md">
-              <p className="font-medium text-foreground mb-2">Så här fixar du det:</p>
-              <ol className="list-decimal list-inside space-y-1">
-                <li>Kör <code className="bg-background px-1 rounded">git pull</code></li>
-                <li>Kör <code className="bg-background px-1 rounded">npm run build</code></li>
-                <li>Kör <code className="bg-background px-1 rounded">npx cap sync android</code></li>
-                <li>Öppna android/-mappen i Android Studio</li>
-                <li>Build → Clean Project → Rebuild</li>
-                <li>Kör appen på enheten</li>
-              </ol>
-            </div>
-          )}
-          
-          <div className="flex flex-wrap gap-3 justify-center">
-            {!pluginError && (
-              <>
-                <Button onClick={handleRetry} variant="default">
-                  <RefreshCw className="w-4 h-4 mr-2" />
-                  Försök igen
-                </Button>
-                {currentEngine !== 'vlc-bridge' && (
-                  <Button onClick={handleSwitchToVlc} variant="outline">
-                    Prova VLC-läge
-                  </Button>
-                )}
-              </>
+          {/* Action buttons - NO BUILD INSTRUCTIONS */}
+          <div className="flex flex-wrap gap-3 justify-center mb-4">
+            {!playbackError?.isPluginError && (
+              <Button onClick={handleRetry} variant="default" size="sm">
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Försök igen
+              </Button>
             )}
             
-            {/* External player option */}
-            {streamUrl && (
-              <Button 
-                variant="outline"
-                onClick={() => window.open(`vlc://${streamUrl}`, '_blank')}
-              >
-                <ExternalLink className="w-4 h-4 mr-2" />
-                Öppna i extern spelare
+            {!playbackError?.isPluginError && currentEngine !== 'vlc-bridge' && (
+              <Button onClick={handleSwitchToVlc} variant="outline" size="sm">
+                Prova VLC-motor
               </Button>
             )}
           </div>
+          
+          {/* External player options */}
+          {streamUrl && (
+            <div className="flex flex-wrap gap-2 justify-center">
+              <Button 
+                variant="outline"
+                size="sm"
+                onClick={() => handleOpenExternal('vlc')}
+              >
+                <ExternalLink className="w-4 h-4 mr-2" />
+                Öppna i VLC
+              </Button>
+              <Button 
+                variant="outline"
+                size="sm"
+                onClick={() => handleOpenExternal('mx')}
+              >
+                <Smartphone className="w-4 h-4 mr-2" />
+                Öppna i MX Player
+              </Button>
+              <Button 
+                variant="ghost"
+                size="sm"
+                onClick={handleCopyUrl}
+              >
+                <Copy className="w-4 h-4 mr-2" />
+                Kopiera URL
+              </Button>
+            </div>
+          )}
         </div>
       )}
       
@@ -499,20 +527,24 @@ export function NativePlayerView({
           {!isVod && (onPrevious || onNext) && (
             <>
               {onPrevious && (
-                <button
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="absolute left-1/2 -translate-x-1/2 top-20 text-white/70 hover:text-white"
                   onClick={onPrevious}
-                  className="absolute left-4 top-1/2 -translate-y-1/2 p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
                 >
-                  <ChevronUp className="w-6 h-6" />
-                </button>
+                  <ChevronUp className="w-8 h-8" />
+                </Button>
               )}
               {onNext && (
-                <button
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="absolute left-1/2 -translate-x-1/2 bottom-24 text-white/70 hover:text-white"
                   onClick={onNext}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
                 >
-                  <ChevronDown className="w-6 h-6" />
-                </button>
+                  <ChevronDown className="w-8 h-8" />
+                </Button>
               )}
             </>
           )}

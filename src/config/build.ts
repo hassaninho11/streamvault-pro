@@ -5,7 +5,7 @@
 
 export const BUILD_INFO = {
   version: '2025.01.20',
-  revision: 'A',
+  revision: 'B',
   buildDate: new Date().toISOString().split('T')[0],
   
   get displayVersion() {
