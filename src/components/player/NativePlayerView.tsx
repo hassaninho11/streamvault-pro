@@ -19,6 +19,7 @@ import {
   Settings,
   ArrowLeft,
   RefreshCw,
+  ExternalLink,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
@@ -30,6 +31,11 @@ import {
   getAndroidPlaybackController,
   isAndroidPlaybackAvailable,
 } from '@/player/AndroidPlaybackController';
+import { 
+  NativePlayback, 
+  isNativePlatform,
+  getPlatform,
+} from '@/player/NativePlaybackPlugin';
 import { PlayerLock, PlayerLockOverlay } from './PlayerLock';
 import { EngineSwitcher } from './EngineSwitcher';
 import { useTVMode } from '@/contexts/TVModeContext';
@@ -72,6 +78,7 @@ export function NativePlayerView({
   const [isLocked, setIsLocked] = useState(false);
   const [currentEngine, setCurrentEngine] = useState<string>('none');
   const [isNativeAvailable, setIsNativeAvailable] = useState<boolean | null>(null);
+  const [pluginError, setPluginError] = useState<string | null>(null);
   
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
@@ -82,58 +89,96 @@ export function NativePlayerView({
   
   // Check native availability and initialize controller
   useEffect(() => {
-    const available = isAndroidPlaybackAvailable();
-    setIsNativeAvailable(available);
-    
-    if (!available) {
-      console.warn('[NativePlayerView] Android playback not available - native plugin may not be registered');
-      setState(prev => ({
-        ...prev,
-        status: 'error',
-        error: {
-          code: 'NATIVE_NOT_AVAILABLE',
-          message: 'Native-spelaren är inte tillgänglig. Kontrollera att appen är byggd korrekt.',
-          recoverable: false,
-        },
-      }));
-      return;
-    }
-    
-    try {
-      const controller = getAndroidPlaybackController({
-        onStateChange: (newState) => {
-          setState(newState);
-        },
-        onEngineChange: (engineId, reason) => {
-          setCurrentEngine(engineId);
-          console.log(`[NativePlayerView] Engine changed to ${engineId} (${reason})`);
-        },
-        onError: (error) => {
-          console.error('[NativePlayerView] Playback error:', error);
-          if (!error.recoverable) {
-            toast.error(error.message);
-          }
-        },
-      });
+    const checkAndInitialize = async () => {
+      // First check if platform is Android
+      const platform = getPlatform();
+      const isNative = isNativePlatform();
       
-      controllerRef.current = controller;
+      console.log(`[NativePlayerView] Platform: ${platform}, isNative: ${isNative}`);
       
-      return () => {
-        controller.destroy();
-        controllerRef.current = null;
-      };
-    } catch (err) {
-      console.error('[NativePlayerView] Failed to initialize controller:', err);
-      setState(prev => ({
-        ...prev,
-        status: 'error',
-        error: {
-          code: 'CONTROLLER_INIT_FAILED',
-          message: 'Kunde inte starta native-spelaren. Försök starta om appen.',
-          recoverable: false,
-        },
-      }));
-    }
+      if (!isNative || platform !== 'android') {
+        console.warn('[NativePlayerView] Not running on Android native');
+        setIsNativeAvailable(false);
+        setPluginError('Appen körs inte som native Android-app');
+        return;
+      }
+      
+      // Check if the NativePlayback plugin is actually available
+      try {
+        const info = await NativePlayback.getEngineInfo();
+        console.log('[NativePlayerView] Plugin info:', info);
+        
+        if (info?.platform !== 'android') {
+          throw new Error('Plugin returned non-Android platform');
+        }
+        
+        setIsNativeAvailable(true);
+        setPluginError(null);
+      } catch (err: any) {
+        console.error('[NativePlayerView] Plugin not available:', err);
+        setIsNativeAvailable(false);
+        
+        const isNotImplemented = err?.message?.includes('not implemented') || 
+                                 err?.code === 'UNIMPLEMENTED';
+        setPluginError(
+          isNotImplemented 
+            ? 'NativePlayback-plugin ej implementerat. Bygg appen lokalt med Android Studio.'
+            : `Plugin-fel: ${err?.message || 'Okänt fel'}`
+        );
+        
+        setState(prev => ({
+          ...prev,
+          status: 'error',
+          error: {
+            code: 'NATIVE_PLUGIN_UNAVAILABLE',
+            message: isNotImplemented 
+              ? 'Native-plugin ej tillgängligt. Bygg appen med: git pull, npm run build, npx cap sync android, och kör från Android Studio.'
+              : err?.message || 'Native-plugin kunde inte laddas',
+            recoverable: false,
+          },
+        }));
+        return;
+      }
+      
+      // Initialize controller
+      try {
+        const controller = getAndroidPlaybackController({
+          onStateChange: (newState) => {
+            setState(newState);
+          },
+          onEngineChange: (engineId, reason) => {
+            setCurrentEngine(engineId);
+            console.log(`[NativePlayerView] Engine changed to ${engineId} (${reason})`);
+          },
+          onError: (error) => {
+            console.error('[NativePlayerView] Playback error:', error);
+            if (!error.recoverable) {
+              toast.error(error.message);
+            }
+          },
+        });
+        
+        controllerRef.current = controller;
+      } catch (err) {
+        console.error('[NativePlayerView] Failed to initialize controller:', err);
+        setState(prev => ({
+          ...prev,
+          status: 'error',
+          error: {
+            code: 'CONTROLLER_INIT_FAILED',
+            message: 'Kunde inte starta native-spelaren. Försök starta om appen.',
+            recoverable: false,
+          },
+        }));
+      }
+    };
+    
+    checkAndInitialize();
+    
+    return () => {
+      controllerRef.current?.destroy();
+      controllerRef.current = null;
+    };
   }, []);
   
   // Load stream when URL changes
@@ -258,19 +303,50 @@ export function NativePlayerView({
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 p-6">
           <AlertCircle className="w-16 h-16 text-destructive mb-4" />
           <h3 className="text-xl font-semibold text-foreground mb-2">
-            Uppspelningsfel
+            {pluginError ? 'Native-spelare ej tillgänglig' : 'Uppspelningsfel'}
           </h3>
-          <p className="text-muted-foreground text-center mb-6 max-w-md">
-            {state.error?.message || 'Kunde inte spela upp strömmen'}
+          <p className="text-muted-foreground text-center mb-4 max-w-md">
+            {state.error?.message || pluginError || 'Kunde inte spela upp strömmen'}
           </p>
-          <div className="flex gap-3">
-            <Button onClick={handleRetry} variant="default">
-              <RefreshCw className="w-4 h-4 mr-2" />
-              Försök igen
-            </Button>
-            {currentEngine !== 'vlc-bridge' && (
-              <Button onClick={handleSwitchToVlc} variant="outline">
-                Prova VLC-läge
+          
+          {/* Build instructions for plugin error */}
+          {pluginError && (
+            <div className="mb-6 p-3 bg-muted/50 rounded-lg text-xs text-muted-foreground max-w-md">
+              <p className="font-medium text-foreground mb-2">Så här fixar du det:</p>
+              <ol className="list-decimal list-inside space-y-1">
+                <li>Kör <code className="bg-background px-1 rounded">git pull</code></li>
+                <li>Kör <code className="bg-background px-1 rounded">npm run build</code></li>
+                <li>Kör <code className="bg-background px-1 rounded">npx cap sync android</code></li>
+                <li>Öppna android/-mappen i Android Studio</li>
+                <li>Build → Clean Project → Rebuild</li>
+                <li>Kör appen på enheten</li>
+              </ol>
+            </div>
+          )}
+          
+          <div className="flex flex-wrap gap-3 justify-center">
+            {!pluginError && (
+              <>
+                <Button onClick={handleRetry} variant="default">
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Försök igen
+                </Button>
+                {currentEngine !== 'vlc-bridge' && (
+                  <Button onClick={handleSwitchToVlc} variant="outline">
+                    Prova VLC-läge
+                  </Button>
+                )}
+              </>
+            )}
+            
+            {/* External player option */}
+            {streamUrl && (
+              <Button 
+                variant="outline"
+                onClick={() => window.open(`vlc://${streamUrl}`, '_blank')}
+              >
+                <ExternalLink className="w-4 h-4 mr-2" />
+                Öppna i extern spelare
               </Button>
             )}
           </div>
