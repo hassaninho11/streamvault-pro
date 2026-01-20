@@ -103,6 +103,7 @@ export {
   isNativePlatform,
   getPlatform,
   hashUrlForLog,
+  isNativePlaybackRegistered,
   type PlaybackState,
   type PlaybackError,
   type StreamInfo,

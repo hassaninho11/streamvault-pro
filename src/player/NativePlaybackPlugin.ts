@@ -244,27 +244,50 @@ export { NativePlayback };
  * Check if we're running in a native Capacitor environment
  */
 export function isNativePlatform(): boolean {
-  const cap = (window as unknown as { 
-    Capacitor?: { 
-      isNativePlatform?: () => boolean;
-    } 
-  }).Capacitor;
-  return cap?.isNativePlatform?.() === true;
+  try {
+    const cap = (window as unknown as { 
+      Capacitor?: { 
+        isNativePlatform?: () => boolean;
+      } 
+    }).Capacitor;
+    return cap?.isNativePlatform?.() === true;
+  } catch {
+    return false;
+  }
 }
 
 /**
  * Get the current platform
  */
 export function getPlatform(): 'web' | 'android' | 'ios' {
-  const cap = (window as unknown as { 
-    Capacitor?: { 
-      getPlatform?: () => string;
-    } 
-  }).Capacitor;
-  const platform = cap?.getPlatform?.();
-  if (platform === 'android') return 'android';
-  if (platform === 'ios') return 'ios';
-  return 'web';
+  try {
+    const cap = (window as unknown as { 
+      Capacitor?: { 
+        getPlatform?: () => string;
+      } 
+    }).Capacitor;
+    const platform = cap?.getPlatform?.();
+    if (platform === 'android') return 'android';
+    if (platform === 'ios') return 'ios';
+    return 'web';
+  } catch {
+    return 'web';
+  }
+}
+
+/**
+ * Check if the NativePlayback plugin is properly registered
+ */
+export async function isNativePlaybackRegistered(): Promise<boolean> {
+  if (!isNativePlatform()) return false;
+  
+  try {
+    const info = await NativePlayback.getEngineInfo();
+    return info?.platform === 'android' || info?.platform === 'ios';
+  } catch (err) {
+    console.warn('[NativePlayback] Plugin not registered or unavailable:', err);
+    return false;
+  }
 }
 
 /**

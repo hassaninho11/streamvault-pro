@@ -4,11 +4,15 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useProviders } from './useProviders';
+import { useLocalProviders } from './useLocalProviders';
+import { useAuth } from './useAuth';
 import { VodService } from '@/services/VodService';
 import { useVodStore } from '@/data/stores/vodStore';
 
 export function useVodLoader() {
+  const { user } = useAuth();
   const { providers } = useProviders();
+  const { getDecryptedXtreamCredentials } = useLocalProviders();
   const hasLoaded = useRef(false);
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -49,11 +53,33 @@ export function useVodLoader() {
         try {
           console.log(`[useVodLoader] Loading VOD for provider: ${provider.name}`);
           
+          // Get decrypted credentials
+          let host: string;
+          let username: string;
+          let password: string;
+          
+          if (user) {
+            // For logged-in users, credentials are stored as-is in Supabase
+            host = provider.xtream_host;
+            username = provider.xtream_user;
+            password = provider.xtream_pass_encrypted;
+          } else {
+            // For guests, decrypt the credentials
+            const creds = await getDecryptedXtreamCredentials(provider.id);
+            if (!creds) {
+              console.error(`[useVodLoader] Could not decrypt credentials for ${provider.name}`);
+              continue;
+            }
+            host = creds.host;
+            username = creds.user;
+            password = creds.pass;
+          }
+          
           // Load movies
           const moviesResult = await VodService.loadMovies(
-            provider.xtream_host,
-            provider.xtream_user,
-            provider.xtream_pass_encrypted,
+            host,
+            username,
+            password,
             provider.id
           );
           
@@ -63,9 +89,9 @@ export function useVodLoader() {
 
           // Load series
           const seriesResult = await VodService.loadSeries(
-            provider.xtream_host,
-            provider.xtream_user,
-            provider.xtream_pass_encrypted,
+            host,
+            username,
+            password,
             provider.id
           );
           
@@ -85,7 +111,7 @@ export function useVodLoader() {
     // Delay VOD loading slightly to prioritize live channels
     const timer = setTimeout(loadVod, 2000);
     return () => clearTimeout(timer);
-  }, [providers]);
+  }, [providers, user, getDecryptedXtreamCredentials]);
 
   return {
     isLoading,
