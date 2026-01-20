@@ -71,6 +71,7 @@ export function NativePlayerView({
   const [showControls, setShowControls] = useState(true);
   const [isLocked, setIsLocked] = useState(false);
   const [currentEngine, setCurrentEngine] = useState<string>('none');
+  const [isNativeAvailable, setIsNativeAvailable] = useState<boolean | null>(null);
   
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
@@ -79,35 +80,60 @@ export function NativePlayerView({
   const title = vodTitle || channel?.name || 'Stream';
   const isVod = !!directStreamUrl;
   
-  // Initialize controller
+  // Check native availability and initialize controller
   useEffect(() => {
-    if (!isAndroidPlaybackAvailable()) {
-      console.warn('[NativePlayerView] Android playback not available');
+    const available = isAndroidPlaybackAvailable();
+    setIsNativeAvailable(available);
+    
+    if (!available) {
+      console.warn('[NativePlayerView] Android playback not available - native plugin may not be registered');
+      setState(prev => ({
+        ...prev,
+        status: 'error',
+        error: {
+          code: 'NATIVE_NOT_AVAILABLE',
+          message: 'Native-spelaren är inte tillgänglig. Kontrollera att appen är byggd korrekt.',
+          recoverable: false,
+        },
+      }));
       return;
     }
     
-    const controller = getAndroidPlaybackController({
-      onStateChange: (newState) => {
-        setState(newState);
-      },
-      onEngineChange: (engineId, reason) => {
-        setCurrentEngine(engineId);
-        console.log(`[NativePlayerView] Engine changed to ${engineId} (${reason})`);
-      },
-      onError: (error) => {
-        console.error('[NativePlayerView] Playback error:', error);
-        if (!error.recoverable) {
-          toast.error(error.message);
-        }
-      },
-    });
-    
-    controllerRef.current = controller;
-    
-    return () => {
-      controller.destroy();
-      controllerRef.current = null;
-    };
+    try {
+      const controller = getAndroidPlaybackController({
+        onStateChange: (newState) => {
+          setState(newState);
+        },
+        onEngineChange: (engineId, reason) => {
+          setCurrentEngine(engineId);
+          console.log(`[NativePlayerView] Engine changed to ${engineId} (${reason})`);
+        },
+        onError: (error) => {
+          console.error('[NativePlayerView] Playback error:', error);
+          if (!error.recoverable) {
+            toast.error(error.message);
+          }
+        },
+      });
+      
+      controllerRef.current = controller;
+      
+      return () => {
+        controller.destroy();
+        controllerRef.current = null;
+      };
+    } catch (err) {
+      console.error('[NativePlayerView] Failed to initialize controller:', err);
+      setState(prev => ({
+        ...prev,
+        status: 'error',
+        error: {
+          code: 'CONTROLLER_INIT_FAILED',
+          message: 'Kunde inte starta native-spelaren. Försök starta om appen.',
+          recoverable: false,
+        },
+      }));
+    }
   }, []);
   
   // Load stream when URL changes

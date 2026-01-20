@@ -9,12 +9,13 @@
  * - Web/Desktop: VideoPlayer (HLS.js)
  */
 
-import { useEffect, useMemo, lazy, Suspense } from 'react';
+import { useEffect, useMemo, useState, lazy, Suspense } from 'react';
 import { Channel } from '@/types/iptv';
 import { isNativePlatform, getPlatform } from '@/player/NativePlaybackPlugin';
 import { NativePlayerView } from './NativePlayerView';
-import { Loader2 } from 'lucide-react';
+import { Loader2, AlertTriangle, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
 
 // Lazy load VideoPlayer only on web to reduce bundle size for native apps
 const VideoPlayer = lazy(() => import('./VideoPlayer').then(m => ({ default: m.VideoPlayer })));
@@ -72,6 +73,7 @@ export function SmartPlayer({
   className,
 }: SmartPlayerProps) {
   const useNative = useMemo(() => shouldUseNativePlayer(), []);
+  const [nativeLoadError, setNativeLoadError] = useState(false);
   
   // Log platform detection on mount
   useEffect(() => {
@@ -81,8 +83,20 @@ export function SmartPlayer({
     
     if (platform === 'android' && !useNative) {
       console.warn('[SmartPlayer] WARNING: Android detected but native player not enabled!');
+      setNativeLoadError(true);
     }
   }, [useNative]);
+  
+  // Get stream URL for external player option
+  const streamUrl = directStreamUrl || channel?.streamUrl || '';
+  
+  // Handle opening in external player (VLC, MX Player, etc.)
+  const handleOpenExternal = () => {
+    if (streamUrl) {
+      // Try to open in VLC or default video handler
+      window.open(`vlc://${streamUrl}`, '_blank');
+    }
+  };
   
   // On Android/iOS - use native player (ExoPlayer/AVPlayer)
   // This is REQUIRED for IPTV content - WebView does not support IPTV streams
@@ -97,6 +111,35 @@ export function SmartPlayer({
         onBack={onBack}
         className={className}
       />
+    );
+  }
+  
+  // Show error for Android when native isn't available
+  if (nativeLoadError && getPlatform() === 'android') {
+    return (
+      <div className={cn(
+        "relative bg-black aspect-video w-full flex flex-col items-center justify-center p-6",
+        className
+      )}>
+        <AlertTriangle className="w-16 h-16 text-yellow-500 mb-4" />
+        <h3 className="text-lg font-semibold text-white mb-2">
+          Native-spelare krävs
+        </h3>
+        <p className="text-muted-foreground text-center text-sm mb-4 max-w-sm">
+          IPTV-strömmar kan inte spelas i webbläsaren på Android. 
+          Appen behöver byggas lokalt med native-stöd.
+        </p>
+        {streamUrl && (
+          <Button 
+            variant="outline" 
+            onClick={handleOpenExternal}
+            className="gap-2"
+          >
+            <ExternalLink className="w-4 h-4" />
+            Öppna i extern spelare
+          </Button>
+        )}
+      </div>
     );
   }
   
