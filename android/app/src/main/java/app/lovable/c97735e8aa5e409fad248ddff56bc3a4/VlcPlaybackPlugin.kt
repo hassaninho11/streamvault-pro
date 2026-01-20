@@ -385,9 +385,12 @@ class VlcPlaybackPlugin : Plugin() {
         
         activity?.runOnUiThread {
             try {
-                // Use Media.Type for subtitle slave (libVLC 4.x API)
-                // Type 0 = Subtitle, Type 1 = Audio
-                mediaPlayer?.media?.addSlave(0, url)
+                // For libVLC 4.x, use setSpuTrack or reload media with subtitle option
+                // External subtitles are added via media options on reload
+                val currentMedia = mediaPlayer?.media
+                currentMedia?.addOption(":sub-file=$url")
+                
+                Log.d(TAG, "External subtitle added: $url")
                 call.resolve(JSObject().apply { put("success", true) })
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to add subtitle", e)
