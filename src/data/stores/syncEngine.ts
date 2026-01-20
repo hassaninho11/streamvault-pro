@@ -137,8 +137,10 @@ class SyncEngine {
     let downloaded = 0;
 
     try {
-      // Get local providers
-      const localProviders = await localStore.getProviders();
+      // Get ALL local providers including deleted ones
+      const allLocalProviders = await this.getAllLocalProvidersIncludingDeleted();
+      const localProviders = allLocalProviders.filter(p => !p.deletedAt);
+      const deletedLocalProviders = allLocalProviders.filter(p => p.deletedAt);
 
       // Get remote providers
       const { data: remoteProviders, error } = await supabase
@@ -151,6 +153,8 @@ class SyncEngine {
         return { uploaded, downloaded, errors };
       }
 
+      const remoteMap = new Map((remoteProviders || []).map(p => [p.id, p]));
+
       if (strategy === 'keep_local') {
         // Upload all local to remote
         for (const local of localProviders) {
@@ -158,17 +162,44 @@ class SyncEngine {
           if (result.error) errors.push(result.error);
           else uploaded++;
         }
+        // Delete remote providers that were deleted locally
+        for (const deleted of deletedLocalProviders) {
+          const { error: deleteError } = await supabase
+            .from('providers')
+            .delete()
+            .eq('id', deleted.id)
+            .eq('user_id', userId);
+          if (deleteError) errors.push(`Failed to delete provider: ${deleteError.message}`);
+          else uploaded++;
+        }
       } else if (strategy === 'keep_remote') {
-        // Replace local with remote
+        // Clear local and replace with remote
+        await this.clearLocalProviders();
         for (const remote of remoteProviders || []) {
           await localStore.saveProvider(this.remoteToLocalProvider(remote));
           downloaded++;
         }
       } else {
-        // Merge: latest wins
-        const remoteMap = new Map((remoteProviders || []).map(p => [p.id, p]));
+        // Merge strategy: handle deletions properly
         
-        // Upload local changes
+        // 1. Handle locally deleted providers - delete from remote too
+        for (const deleted of deletedLocalProviders) {
+          const remote = remoteMap.get(deleted.id);
+          if (remote) {
+            // Only delete if local deletion is newer
+            if (deleted.deletedAt! > new Date(remote.updated_at).getTime()) {
+              const { error: deleteError } = await supabase
+                .from('providers')
+                .delete()
+                .eq('id', deleted.id)
+                .eq('user_id', userId);
+              if (deleteError) errors.push(`Failed to delete provider: ${deleteError.message}`);
+              else uploaded++;
+            }
+          }
+        }
+        
+        // 2. Upload local changes
         for (const local of localProviders) {
           const remote = remoteMap.get(local.id);
           if (!remote || new Date(remote.updated_at).getTime() < local.updatedAt) {
@@ -178,8 +209,12 @@ class SyncEngine {
           }
         }
 
-        // Download remote changes
+        // 3. Download remote changes (only if not deleted locally)
+        const localDeletedIds = new Set(deletedLocalProviders.map(p => p.id));
         for (const remote of remoteProviders || []) {
+          // Skip if this was deleted locally
+          if (localDeletedIds.has(remote.id)) continue;
+          
           const local = localProviders.find(p => p.id === remote.id);
           if (!local || local.updatedAt < new Date(remote.updated_at).getTime()) {
             await localStore.saveProvider(this.remoteToLocalProvider(remote));
@@ -192,6 +227,18 @@ class SyncEngine {
     }
 
     return { uploaded, downloaded, errors };
+  }
+
+  // Helper to get all providers including deleted
+  private async getAllLocalProvidersIncludingDeleted(): Promise<LocalProvider[]> {
+    const db = await localStore.getDB();
+    return await db.getAll('providers');
+  }
+
+  // Helper to clear all local providers
+  private async clearLocalProviders(): Promise<void> {
+    const db = await localStore.getDB();
+    await db.clear('providers');
   }
 
   private async upsertRemoteProvider(userId: string, local: LocalProvider): Promise<{ error?: string }> {
@@ -246,7 +293,10 @@ class SyncEngine {
     let downloaded = 0;
 
     try {
-      const localFavorites = await localStore.getFavorites();
+      // Get ALL local favorites including deleted
+      const allLocalFavorites = await this.getAllLocalFavoritesIncludingDeleted();
+      const localFavorites = allLocalFavorites.filter(f => !f.deletedAt);
+      const deletedLocalFavorites = allLocalFavorites.filter(f => f.deletedAt);
 
       const { data: remoteFavorites, error } = await supabase
         .from('favorites')
@@ -259,6 +309,7 @@ class SyncEngine {
       }
 
       if (strategy === 'keep_local') {
+        // Upload all active local favorites
         for (const local of localFavorites) {
           const { error: upsertError } = await supabase
             .from('favorites')
@@ -271,19 +322,44 @@ class SyncEngine {
           if (upsertError) errors.push(upsertError.message);
           else uploaded++;
         }
+        // Delete remote favorites that were deleted locally
+        for (const deleted of deletedLocalFavorites) {
+          const { error: deleteError } = await supabase
+            .from('favorites')
+            .delete()
+            .eq('id', deleted.id)
+            .eq('user_id', userId);
+          if (!deleteError) uploaded++;
+        }
       } else if (strategy === 'keep_remote') {
+        // Clear local favorites and replace with remote
+        await this.clearLocalFavorites();
         for (const remote of remoteFavorites || []) {
           await localStore.addFavorite(remote.channel_id, remote.provider_id || '');
           downloaded++;
         }
       } else {
-        // Merge: combine both sets
-        const remoteSet = new Set((remoteFavorites || []).map(f => f.channel_id));
+        // Merge: handle deletions properly
+        const remoteMap = new Map((remoteFavorites || []).map(f => [f.channel_id, f]));
         const localSet = new Set(localFavorites.map(f => f.channelId));
+        const localDeletedChannels = new Set(deletedLocalFavorites.map(f => f.channelId));
+
+        // Delete from remote if deleted locally
+        for (const deleted of deletedLocalFavorites) {
+          const remote = remoteMap.get(deleted.channelId);
+          if (remote) {
+            const { error: deleteError } = await supabase
+              .from('favorites')
+              .delete()
+              .eq('id', remote.id)
+              .eq('user_id', userId);
+            if (!deleteError) uploaded++;
+          }
+        }
 
         // Upload local-only favorites
         for (const local of localFavorites) {
-          if (!remoteSet.has(local.channelId)) {
+          if (!remoteMap.has(local.channelId)) {
             const { error: upsertError } = await supabase
               .from('favorites')
               .upsert({
@@ -297,9 +373,9 @@ class SyncEngine {
           }
         }
 
-        // Download remote-only favorites
+        // Download remote-only favorites (skip if deleted locally)
         for (const remote of remoteFavorites || []) {
-          if (!localSet.has(remote.channel_id)) {
+          if (!localSet.has(remote.channel_id) && !localDeletedChannels.has(remote.channel_id)) {
             await localStore.addFavorite(remote.channel_id, remote.provider_id || '');
             downloaded++;
           }
@@ -310,6 +386,18 @@ class SyncEngine {
     }
 
     return { uploaded, downloaded, errors };
+  }
+
+  // Helper to get all favorites including deleted
+  private async getAllLocalFavoritesIncludingDeleted(): Promise<LocalFavorite[]> {
+    const db = await localStore.getDB();
+    return await db.getAll('favorites');
+  }
+
+  // Helper to clear all local favorites
+  private async clearLocalFavorites(): Promise<void> {
+    const db = await localStore.getDB();
+    await db.clear('favorites');
   }
 
   // ============= Recents Sync =============
