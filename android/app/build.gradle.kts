@@ -38,9 +38,12 @@ android {
 }
 
 // Fix for RuntimeClasspathCopy configuration issue in Android Studio sync
-configurations.matching { it.name.endsWith("RuntimeClasspathCopy") }.configureEach {
-    isCanBeResolved = true
-    isCanBeConsumed = false
+// Applied via gradle.projectsEvaluated to run after AGP creates configurations
+gradle.projectsEvaluated {
+    configurations.matching { it.name.endsWith("RuntimeClasspathCopy") }.configureEach {
+        isCanBeResolved = true
+        isCanBeConsumed = false
+    }
 }
 
 dependencies {
