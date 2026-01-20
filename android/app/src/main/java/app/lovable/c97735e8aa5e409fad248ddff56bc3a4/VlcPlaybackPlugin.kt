@@ -385,7 +385,9 @@ class VlcPlaybackPlugin : Plugin() {
         
         activity?.runOnUiThread {
             try {
-                mediaPlayer?.addSlave(Media.Slave.Type.Subtitle, Uri.parse(url), true)
+                // Use Media.Type for subtitle slave (libVLC 4.x API)
+                // Type 0 = Subtitle, Type 1 = Audio
+                mediaPlayer?.media?.addSlave(0, url)
                 call.resolve(JSObject().apply { put("success", true) })
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to add subtitle", e)
