@@ -71,24 +71,42 @@ export function NativeDiagnostics() {
       details: platform === 'web' ? 'Appen körs i webbläsaren, inte som native app' : undefined,
     });
 
-    // 2. Capacitor Runtime
+    // 2. Capacitor Runtime - with detailed bridge inspection
     updateCheck('capacitor', { status: 'checking' });
     await new Promise(r => setTimeout(r, 200));
     try {
       const cap = (window as any).Capacitor;
+      const capBridge = (window as any).CapacitorBridge;
+      
+      // Log raw state for debugging
+      console.log('[NativeDiagnostics] window.Capacitor:', cap);
+      console.log('[NativeDiagnostics] window.CapacitorBridge:', capBridge);
+      console.log('[NativeDiagnostics] Capacitor.Plugins:', cap?.Plugins);
+      console.log('[NativeDiagnostics] Capacitor.getPlatform:', cap?.getPlatform?.());
+      console.log('[NativeDiagnostics] Capacitor.isNativePlatform:', cap?.isNativePlatform?.());
+      
       if (cap) {
         const plugins = cap.Plugins || {};
+        const registeredPlugins = cap.registeredPlugins?.list?.() || [];
         const pluginCount = Object.keys(plugins).length;
+        const hasNativePlayback = 'NativePlayback' in plugins || registeredPlugins.includes('NativePlayback');
+        
+        console.log('[NativeDiagnostics] Registered plugins:', registeredPlugins);
+        console.log('[NativeDiagnostics] Plugin keys:', Object.keys(plugins));
+        console.log('[NativeDiagnostics] Has NativePlayback:', hasNativePlayback);
+        
         updateCheck('capacitor', {
-          status: 'success',
-          message: `Capacitor finns, ${pluginCount} plugins registrerade`,
-          details: `Plugins: ${Object.keys(plugins).join(', ') || 'Inga'}`,
+          status: hasNativePlayback ? 'success' : 'warning',
+          message: `Capacitor finns, ${pluginCount} plugins`,
+          details: hasNativePlayback 
+            ? `NativePlayback registrerad ✓ | Alla: ${Object.keys(plugins).join(', ') || 'Inga'}`
+            : `NativePlayback SAKNAS! | Finns: ${Object.keys(plugins).join(', ') || 'Inga'}`,
         });
       } else {
         updateCheck('capacitor', {
           status: 'error',
           message: 'Capacitor runtime hittades inte',
-          details: 'Appen har inte tillgång till Capacitor. Bygg lokalt med "npx cap sync".',
+          details: 'window.Capacitor är undefined. Appen körs troligen i webbläsaren eller dev-server.',
         });
       }
     } catch (e) {
