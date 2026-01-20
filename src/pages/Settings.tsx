@@ -44,7 +44,9 @@ import { CategoryVisibilitySettings } from "@/components/settings/CategoryVisibi
 import { PlaylistUpdateSettings } from "@/components/settings/PlaylistUpdateSettings";
 import { StartupMetrics } from "@/components/settings/StartupMetrics";
 import { BugReportForm } from "@/components/settings/BugReportForm";
+import { NativeDiagnostics } from "@/components/settings/NativeDiagnostics";
 import { APP_CONFIG } from "@/config/app";
+import { getPlatform } from "@/player/NativePlaybackPlugin";
 import { cn } from "@/lib/utils";
 import { useSettingsStore, PROTECTED_SETTINGS } from "@/data/stores/settingsStore";
 import { useAuth } from "@/hooks/useAuth";
@@ -876,40 +878,47 @@ export default function SettingsPage() {
 
             {/* About Section */}
             {activeSection === "about" && (
-              <Card variant="glass">
-                <CardHeader>
-                  <CardTitle>About {APP_CONFIG.name}</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex items-center gap-4">
-                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-glow">
-                      <Zap className="w-8 h-8 text-primary-foreground" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-lg">{APP_CONFIG.name}</h3>
-                      <p className="text-sm text-muted-foreground">Version {APP_CONFIG.version}</p>
-                    </div>
-                  </div>
-                  <Separator />
-                  <div className="text-sm text-muted-foreground space-y-2">
-                    <p>
-                      {APP_CONFIG.name} is an IPTV playlist player that lets you watch your own content sources.
-                    </p>
-                    <p>
-                      We do not host, provide, or recommend any content. All streams and playlists are provided by you, the user.
-                    </p>
-                  </div>
-                  <Separator />
-                  <div className="flex flex-col gap-3">
-                    <div className="flex gap-2">
-                      <Button variant="outline" size="sm" onClick={() => navigate('/privacy')}>Privacy Policy</Button>
-                      <Button variant="outline" size="sm" onClick={() => navigate('/terms')}>Terms of Service</Button>
+              <>
+                <Card variant="glass">
+                  <CardHeader>
+                    <CardTitle>About {APP_CONFIG.name}</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="flex items-center gap-4">
+                      <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary to-accent flex items-center justify-center shadow-glow">
+                        <Zap className="w-8 h-8 text-primary-foreground" />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-lg">{APP_CONFIG.name}</h3>
+                        <p className="text-sm text-muted-foreground">Version {APP_CONFIG.version}</p>
+                      </div>
                     </div>
                     <Separator />
-                    <BugReportForm />
-                  </div>
-                </CardContent>
-              </Card>
+                    <div className="text-sm text-muted-foreground space-y-2">
+                      <p>
+                        {APP_CONFIG.name} is an IPTV playlist player that lets you watch your own content sources.
+                      </p>
+                      <p>
+                        We do not host, provide, or recommend any content. All streams and playlists are provided by you, the user.
+                      </p>
+                    </div>
+                    <Separator />
+                    <div className="flex flex-col gap-3">
+                      <div className="flex gap-2">
+                        <Button variant="outline" size="sm" onClick={() => navigate('/privacy')}>Privacy Policy</Button>
+                        <Button variant="outline" size="sm" onClick={() => navigate('/terms')}>Terms of Service</Button>
+                      </div>
+                      <Separator />
+                      <BugReportForm />
+                    </div>
+                  </CardContent>
+                </Card>
+                
+                {/* Native Diagnostics - only show on Android or during debugging */}
+                {(getPlatform() === 'android' || import.meta.env.DEV) && (
+                  <NativeDiagnostics />
+                )}
+              </>
             )}
           </div>
         </div>
