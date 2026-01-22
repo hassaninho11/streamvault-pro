@@ -331,12 +331,19 @@ export function getAndroidPlaybackController(
   events?: AndroidPlaybackEvents,
   settings?: Partial<PlayerSettings>
 ): AndroidPlaybackController {
-  // Only create on Android
-  if (!isNativePlatform() || getPlatform() !== 'android') {
+  // Check platform - but don't throw immediately, let the load() call handle errors
+  const platform = getPlatform();
+  const isNative = isNativePlatform();
+  
+  console.log(`[AndroidPlaybackController] Platform: ${platform}, isNative: ${isNative}`);
+  
+  if (!isNative || platform !== 'android') {
+    console.warn('[AndroidPlaybackController] Not running on Android native platform');
     throw new Error('AndroidPlaybackController is only available on Android');
   }
   
   if (!androidController) {
+    console.log('[AndroidPlaybackController] Creating new singleton instance');
     androidController = new AndroidPlaybackController(events, settings);
   }
   return androidController;

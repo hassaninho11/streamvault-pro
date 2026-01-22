@@ -94,7 +94,7 @@ export function NativePlayerView({
   const title = vodTitle || channel?.name || 'Stream';
   const isVod = !!directStreamUrl;
   
-  // Initialize controller and start playback immediately
+  // Initialize and start playback immediately - NO pre-checks, just try to play
   useEffect(() => {
     if (initAttempted.current) return;
     initAttempted.current = true;
@@ -102,38 +102,22 @@ export function NativePlayerView({
     const initAndPlay = async () => {
       const platform = getPlatform();
       console.log(`[NativePlayerView] Initializing on platform: ${platform}`);
+      console.log(`[NativePlayerView] Stream URL: ${streamUrl?.substring(0, 60) || 'none'}`);
       
-      // Check if plugin is available
-      try {
-        const info = await NativePlayback.getEngineInfo();
-        console.log('[NativePlayerView] Plugin info:', info);
-        
-        if (info?.platform !== 'android' && info?.platform !== 'ios') {
-          throw new Error('Native plugin not available for this platform');
-        }
-      } catch (err: any) {
-        console.error('[NativePlayerView] Plugin check failed:', err);
-        
-        const isNotImplemented = err?.message?.includes('not implemented') || 
-                                 err?.code === 'UNIMPLEMENTED';
-        
-        setPlaybackError({
-          code: 'PLUGIN_UNAVAILABLE',
-          message: isNotImplemented 
-            ? 'Native-plugin ej tillgängligt'
-            : err?.message || 'Kunde inte ladda native-plugin',
-          isPluginError: true,
-        });
-        
-        setState(prev => ({ ...prev, status: 'error' }));
-        return;
-      }
+      // Skip plugin availability check - just try to use it directly
+      // The actual load() call will fail if the plugin isn't available
       
-      // Initialize controller
       try {
         const controller = getAndroidPlaybackController({
           onStateChange: (newState) => {
+            console.log('[NativePlayerView] State:', newState.status);
             setState(newState);
+            
+            // Clear error when playback starts
+            if (newState.status === 'playing' || newState.status === 'buffering') {
+              setPlaybackError(null);
+            }
+            
             if (newState.error) {
               setPlaybackError({
                 code: newState.error.code,
@@ -145,8 +129,8 @@ export function NativePlayerView({
           onEngineChange: (engineId, reason) => {
             setCurrentEngine(engineId);
             console.log(`[NativePlayerView] Engine changed to ${engineId} (${reason})`);
-            if (reason) {
-              toast.info(`Motor: ${engineId === 'vlc-bridge' ? 'VLC' : 'ExoPlayer'}`);
+            if (reason === 'fallback') {
+              toast.info('Bytte till VLC-motor');
             }
           },
           onError: (error) => {
@@ -160,14 +144,22 @@ export function NativePlayerView({
         });
         
         controllerRef.current = controller;
-        setPlaybackError(null);
+        console.log('[NativePlayerView] Controller created successfully');
         
       } catch (err: any) {
         console.error('[NativePlayerView] Controller init failed:', err);
+        
+        // This is where we'd see if the native plugin is truly unavailable
+        const isPluginError = err?.message?.includes('not available') ||
+                              err?.message?.includes('Android') ||
+                              err?.message?.includes('not implemented');
+        
         setPlaybackError({
           code: 'INIT_FAILED',
-          message: 'Kunde inte starta spelaren',
-          isPluginError: true,
+          message: isPluginError 
+            ? 'Native-plugin ej tillgängligt - kontrollera att appen är korrekt byggd'
+            : (err?.message || 'Kunde inte starta spelaren'),
+          isPluginError: isPluginError,
         });
         setState(prev => ({ ...prev, status: 'error' }));
       }
@@ -179,7 +171,7 @@ export function NativePlayerView({
       controllerRef.current?.destroy();
       controllerRef.current = null;
     };
-  }, []);
+  }, [streamUrl]);
   
   // Load stream when URL changes or controller is ready
   useEffect(() => {
