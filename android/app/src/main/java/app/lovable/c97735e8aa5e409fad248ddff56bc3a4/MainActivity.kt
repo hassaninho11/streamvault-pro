@@ -7,25 +7,33 @@ import com.getcapacitor.BridgeActivity
 /**
  * MainActivity for StreamVault
  * 
- * CRITICAL: Disables edge-to-edge mode to prevent UI from rendering
- * behind the system status bar (clock, battery, notifications).
+ * CRITICAL: Plugins must be registered in init{} block BEFORE onCreate()
+ * is called. In Capacitor 6+, the bridge is initialized in super.onCreate()
+ * so registering plugins after that call means they won't be found by JS.
  * 
- * This is the NATIVE fix for Android - CSS safe-area-inset does not
- * work reliably in Android WebViews.
+ * Also disables edge-to-edge mode to prevent UI from rendering
+ * behind the system status bar.
  */
 class MainActivity : BridgeActivity() {
     
+    init {
+        // CRITICAL: Register plugins BEFORE the bridge is initialized
+        // This is called before onCreate(), ensuring plugins are available to JS
+        registerPlugin(NativePlaybackPlugin::class.java)
+        registerPlugin(NativeCastPlugin::class.java)
+        registerPlugin(VlcPlaybackPlugin::class.java)
+    }
+    
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Register plugins again for safety (some Capacitor versions need this)
+        registerPlugin(NativePlaybackPlugin::class.java)
+        registerPlugin(NativeCastPlugin::class.java)
+        registerPlugin(VlcPlaybackPlugin::class.java)
+        
         super.onCreate(savedInstanceState)
         
         // CRITICAL: Disable edge-to-edge mode
         // This ensures the WebView content respects system bar boundaries
-        // and does not render behind the status bar
         WindowCompat.setDecorFitsSystemWindows(window, true)
-        
-        // Register native playback plugins
-        registerPlugin(NativePlaybackPlugin::class.java)
-        registerPlugin(NativeCastPlugin::class.java)
-        registerPlugin(VlcPlaybackPlugin::class.java)
     }
 }
